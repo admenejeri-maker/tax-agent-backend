@@ -29,6 +29,22 @@ class Settings(BaseModel):
     )
 
     # =========================================================================
+    # LLM Generation (RAG Pipeline)
+    # =========================================================================
+    generation_model: str = Field(
+        default_factory=lambda: os.getenv("GEMINI_GENERATION_MODEL", "gemini-2.0-flash")
+    )
+    temperature: float = Field(
+        default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.2"))
+    )
+    max_history_turns: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_HISTORY_TURNS", "5"))
+    )
+    max_output_tokens: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
+    )
+
+    # =========================================================================
     # Tax Agent Settings
     # =========================================================================
     similarity_threshold: float = Field(

@@ -1,0 +1,63 @@
+"""
+Test System Prompt — Task 6b
+==============================
+
+4 tests verifying system prompt construction:
+- Base prompt always present
+- Context chunks injected correctly
+- Red zone disclaimer appended
+- Temporal warning with year substitution
+"""
+
+from app.services.tax_system_prompt import (
+    build_system_prompt,
+    BASE_SYSTEM_PROMPT,
+    DISCLAIMER_CALCULATION,
+)
+
+
+class TestBuildSystemPrompt:
+    """Tests for system prompt construction."""
+
+    def test_contains_base_prompt(self):
+        """Generated prompt always starts with the base system prompt."""
+        prompt = build_system_prompt(context_chunks=[])
+        assert BASE_SYSTEM_PROMPT in prompt
+
+    def test_context_injected(self):
+        """Context chunks appear in the generated prompt."""
+        chunks = ["მუხლი 1: საშემოსავლო გადასახადი"]
+        prompt = build_system_prompt(context_chunks=chunks)
+        assert "საშემოსავლო გადასახადი" in prompt
+
+    def test_red_zone_disclaimer_added(self):
+        """Red zone flag injects the calculation disclaimer."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            is_red_zone=True,
+        )
+        assert DISCLAIMER_CALCULATION in prompt
+
+    def test_temporal_warning_includes_year(self):
+        """Temporal year renders the warning with the correct year."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            temporal_year=2022,
+        )
+        assert "2022" in prompt
+        assert "შეცვლილი" in prompt
+
+    def test_definitions_injected(self):
+        """Matched definitions appear in the prompt."""
+        defs = [{"term_ka": "დღგ", "definition": "დამატებული ღირებულების გადასახადი"}]
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            definitions=defs,
+        )
+        assert "დღგ" in prompt
+        assert "დამატებული ღირებულების გადასახადი" in prompt
+
+    def test_empty_context_shows_fallback(self):
+        """Empty context injects a fallback message."""
+        prompt = build_system_prompt(context_chunks=[])
+        assert "ინფორმაცია ვერ მოიძებნა" in prompt

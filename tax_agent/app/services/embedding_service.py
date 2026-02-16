@@ -51,6 +51,18 @@ def reset_client():
     _client = None
 
 
+def get_genai_client():
+    """Public accessor for the Google GenAI client singleton.
+
+    Used by rag_pipeline.py for generate_content calls.
+    Shares the same lazy-initialized client as embedding operations.
+
+    Returns:
+        google.genai.Client configured with API key from settings.
+    """
+    return _get_client()
+
+
 # ─── Text Builders ───────────────────────────────────────────────────────────
 
 
