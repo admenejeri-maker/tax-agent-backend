@@ -184,6 +184,27 @@ class TestTaxArticleStoreCRUD:
 
         assert result == 309
 
+    @pytest.mark.asyncio
+    @patch("app.models.tax_article.db_manager")
+    async def test_find_all(self, mock_db):
+        """find_all returns all articles."""
+        # Motor's .find() is synchronous (returns cursor), so use MagicMock
+        mock_collection = MagicMock()
+        mock_db.db.tax_articles = mock_collection
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[
+            {"article_number": 81, "title": "Art 81"},
+            {"article_number": 82, "title": "Art 82"},
+        ])
+        mock_collection.find.return_value = mock_cursor
+
+        store = TaxArticleStore()
+        results = await store.find_all()
+
+        assert len(results) == 2
+        mock_collection.find.assert_called_once_with({}, {"_id": 0})
+
 
 # =============================================================================
 # DefinitionStore — CRUD TESTS

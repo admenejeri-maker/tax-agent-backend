@@ -176,6 +176,16 @@ class TaxArticleStore:
         )
         return await cursor.to_list(length=500)
 
+    async def find_all(self) -> List[dict]:
+        """
+        Return all articles in the collection.
+
+        Returns:
+            List of article documents (dicts).
+        """
+        cursor = self._collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=500)
+
     async def count(self) -> int:
         """Return the total number of articles in the collection."""
         return await self._collection.count_documents({})
