@@ -32,6 +32,8 @@ ARTICLE_BODY_SELECTOR = "p.abzacixml"
 CROSS_REF_SELECTOR = "a.DocumentLink"
 DEFINITIONS_ARTICLE_NUMBER = 8
 FETCH_TIMEOUT_SECONDS = 30
+MAX_RESPONSE_BYTES = 50 * 1024 * 1024  # 50 MB safety cap
+USER_AGENT = "ScoopTaxAgent/1.0 (+tax-agent-backend)"
 
 # Georgian patterns
 ARTICLE_NUMBER_RE = re.compile(r"მუხლი\s+(\d+)")
@@ -54,9 +56,12 @@ async def fetch_tax_code_html(session: aiohttp.ClientSession) -> str:
     await asyncio.sleep(delay)
 
     timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    headers = {"User-Agent": USER_AGENT}
     logger.info("matsne_fetch_start", extra={"url": MATSNE_TAX_CODE_URL})
 
-    async with session.get(MATSNE_TAX_CODE_URL, timeout=timeout) as response:
+    async with session.get(
+        MATSNE_TAX_CODE_URL, timeout=timeout, headers=headers,
+    ) as response:
         if response.status != 200:
             raise aiohttp.ClientResponseError(
                 request_info=response.request_info,
@@ -64,7 +69,13 @@ async def fetch_tax_code_html(session: aiohttp.ClientSession) -> str:
                 status=response.status,
                 message=f"Matsne returned HTTP {response.status}",
             )
-        html = await response.text()
+        raw = await response.read()
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ValueError(
+                f"Response too large: {len(raw)} bytes "
+                f"(limit {MAX_RESPONSE_BYTES})"
+            )
+        html = raw.decode("utf-8", errors="replace")
         logger.info(
             "matsne_fetch_complete",
             extra={"bytes": len(html)},
@@ -235,9 +246,12 @@ def extract_cross_references(
 
 
 def detect_exception_article(body: str) -> bool:
-    """Check if body text contains lex specialis (exception) keywords."""
-    body_lower = body.lower()
-    return any(kw in body_lower for kw in EXCEPTION_KEYWORDS)
+    """Check if body text contains lex specialis (exception) keywords.
+
+    Note: Georgian mkhedruli script has no case distinction,
+    so no .lower() normalization is needed.
+    """
+    return any(kw in body for kw in EXCEPTION_KEYWORDS)
 
 
 # ─── 3e: Definition Extraction ──────────────────────────────────────────────
@@ -326,51 +340,77 @@ async def scrape_and_store(
 
     articles_count = 0
     skipped = 0
+    errors = 0
 
     for i, header in enumerate(headers):
-        next_header_tag = (
-            headers[i + 1]["header_tag"] if i + 1 < len(headers) else None
-        )
+        try:
+            next_header_tag = (
+                headers[i + 1]["header_tag"] if i + 1 < len(headers) else None
+            )
 
-        body = parse_article_body(header["header_tag"], next_header_tag)
-        if not body:
-            skipped += 1
-            continue
+            body = parse_article_body(header["header_tag"], next_header_tag)
+            if not body:
+                skipped += 1
+                continue
 
-        refs = extract_cross_references(header["header_tag"], next_header_tag)
-        is_exception = detect_exception_article(body)
-        embedding_text = (
-            f"Article {header['article_number']}: {header['title']}\n{body}"
-        )
+            refs = extract_cross_references(
+                header["header_tag"], next_header_tag,
+            )
+            is_exception = detect_exception_article(body)
+            embedding_text = (
+                f"Article {header['article_number']}: {header['title']}\n{body}"
+            )
 
-        article = TaxArticle(
-            article_number=header["article_number"],
-            kari=header["kari"],
-            tavi=header["tavi"],
-            title=header["title"],
-            body=body,
-            status=header["status"],
-            related_articles=refs,
-            is_exception=is_exception,
-            embedding_text=embedding_text,
-        )
-        await article_store.upsert(article)
-        articles_count += 1
+            article = TaxArticle(
+                article_number=header["article_number"],
+                kari=header["kari"],
+                tavi=header["tavi"],
+                title=header["title"],
+                body=body,
+                status=header["status"],
+                related_articles=refs,
+                is_exception=is_exception,
+                embedding_text=embedding_text,
+            )
+            await article_store.upsert(article)
+            articles_count += 1
+        except Exception as e:
+            errors += 1
+            logger.error(
+                "article_processing_failed",
+                extra={
+                    "article_number": header.get("article_number"),
+                    "error": str(e),
+                },
+            )
 
     # Extract and store definitions
     defs = extract_definitions(soup, headers)
+    defs_stored = 0
     for d in defs:
-        defn = Definition(
-            term_ka=d["term_ka"],
-            definition=d["definition"],
-            article_ref=d["article_ref"],
-        )
-        await definition_store.upsert(defn)
+        try:
+            defn = Definition(
+                term_ka=d["term_ka"],
+                definition=d["definition"],
+                article_ref=d["article_ref"],
+            )
+            await definition_store.upsert(defn)
+            defs_stored += 1
+        except Exception as e:
+            errors += 1
+            logger.error(
+                "definition_processing_failed",
+                extra={
+                    "term_ka": d.get("term_ka"),
+                    "error": str(e),
+                },
+            )
 
     stats = {
         "articles_count": articles_count,
-        "definitions_count": len(defs),
+        "definitions_count": defs_stored,
         "skipped": skipped,
+        "errors": errors,
     }
     logger.info("scrape_complete", extra=stats)
     return stats

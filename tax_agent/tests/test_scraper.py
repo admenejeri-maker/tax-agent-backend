@@ -16,6 +16,7 @@ from app.services.matsne_scraper import (
     DEFINITIONS_ARTICLE_NUMBER,
     KARI_RE,
     TAVI_RE,
+    USER_AGENT,
     detect_exception_article,
     detect_version,
     extract_cross_references,
@@ -182,7 +183,9 @@ class TestFetchAndVersion:
         """fetch_tax_code_html returns HTML via mocked session."""
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.text = AsyncMock(return_value="<html>test</html>")
+        mock_response.read = AsyncMock(
+            return_value=b"<html>test</html>",
+        )
         mock_response.request_info = MagicMock()
         mock_response.history = ()
 
@@ -203,7 +206,7 @@ class TestFetchAndVersion:
         """asyncio.sleep called with configured delay."""
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.text = AsyncMock(return_value="<html></html>")
+        mock_response.read = AsyncMock(return_value=b"<html></html>")
         mock_response.request_info = MagicMock()
         mock_response.history = ()
 
@@ -220,6 +223,30 @@ class TestFetchAndVersion:
             mock_settings.matsne_request_delay = 2.5
             await fetch_tax_code_html(mock_session)
             mock_sleep.assert_awaited_once_with(2.5)
+
+    @pytest.mark.asyncio
+    async def test_fetch_sends_user_agent(self):
+        """F3: User-Agent header sent with request."""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.read = AsyncMock(return_value=b"<html></html>")
+        mock_response.request_info = MagicMock()
+        mock_response.history = ()
+
+        mock_session = AsyncMock()
+        mock_ctx = AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_response),
+            __aexit__=AsyncMock(return_value=False),
+        )
+        mock_session.get = MagicMock(return_value=mock_ctx)
+
+        with patch("app.services.matsne_scraper.settings") as mock_settings:
+            mock_settings.matsne_request_delay = 0
+            await fetch_tax_code_html(mock_session)
+
+        call_kwargs = mock_session.get.call_args
+        assert "headers" in call_kwargs.kwargs
+        assert call_kwargs.kwargs["headers"]["User-Agent"] == USER_AGENT
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -392,6 +419,10 @@ class TestCrossReferences:
         """Lex specialis keywords → is_exception=True."""
         assert detect_exception_article(SAMPLE_EXCEPTION_BODY) is True
 
+    def test_detect_exception_article_false(self):
+        """F2: Non-exception text → is_exception=False."""
+        assert detect_exception_article(SAMPLE_NON_EXCEPTION_BODY) is False
+
     def test_extract_cross_refs_empty(self):
         """No DocumentLink tags → empty list."""
         soup = BeautifulSoup(SAMPLE_NO_CROSS_REF_HTML, "html.parser")
@@ -506,6 +537,34 @@ class TestOrchestrator:
         if total > 0:
             skip_rate = stats["skipped"] / total
             assert skip_rate <= 0.05, f"Skip rate {skip_rate:.1%} exceeds 5%"
+
+    @pytest.mark.asyncio
+    async def test_scrape_and_store_error_isolation(self):
+        """F1: One bad article doesn't kill entire scrape."""
+        mock_article_store = AsyncMock()
+        mock_definition_store = AsyncMock()
+
+        # First upsert raises, subsequent ones succeed
+        mock_article_store.upsert.side_effect = [
+            RuntimeError("DB write failed"),
+            None,  # second article succeeds
+            None,  # third article succeeds
+        ]
+
+        html = SAMPLE_DEFINITIONS_HTML  # Has articles 7, 8, 9
+
+        with patch(
+            "app.services.matsne_scraper.fetch_tax_code_html",
+            new_callable=AsyncMock,
+            return_value=html,
+        ):
+            stats = await scrape_and_store(
+                mock_article_store, mock_definition_store
+            )
+
+        # At least one succeeded despite the error
+        assert stats["articles_count"] >= 1
+        assert stats["errors"] >= 1
 
     @pytest.mark.asyncio
     async def test_embedding_text_format(self):
