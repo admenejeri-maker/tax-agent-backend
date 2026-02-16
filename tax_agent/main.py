@@ -28,6 +28,7 @@ from slowapi.errors import RateLimitExceeded
 from config import settings
 from app.database import db_manager
 from app.auth.router import router as auth_router
+from app.api.api_router import router as api_router
 
 # =============================================================================
 # LOGGING
@@ -123,6 +124,9 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 # Auth endpoints at /auth
 app.include_router(auth_router, prefix="/auth")
+
+# API endpoints at /api
+app.include_router(api_router, prefix="/api")
 
 
 @app.get("/health")
