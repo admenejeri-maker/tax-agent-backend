@@ -23,9 +23,8 @@ logger = logging.getLogger(__name__)
 
 # ─── Constants (update here if DOM changes) ──────────────────────────────────
 
-MATSNE_TAX_CODE_URL = (
-    "https://matsne.gov.ge/ka/document/view/1043717?publication=239"
-)
+MATSNE_BASE_URL = "https://matsne.gov.ge/ka/document/view/1043717"
+MATSNE_TAX_CODE_URL = f"{MATSNE_BASE_URL}?publication=239"
 ARTICLE_HEADER_SELECTOR = "p.muxlixml"
 HEADER_TEXT_SELECTOR = ".oldStyleDocumentPart"
 ARTICLE_BODY_SELECTOR = "p.abzacixml"
@@ -91,6 +90,51 @@ def detect_version(html: str) -> Optional[str]:
     """
     match = re.search(r"publication[=:]\s*(\d+)", html)
     return match.group(1) if match else None
+
+
+async def fetch_latest_html() -> str:
+    """Fetch latest Tax Code HTML from Matsne (follows redirect to current version).
+
+    Uses MATSNE_BASE_URL (without publication param) so Matsne resolves
+    to the latest published version. Creates its own aiohttp session.
+
+    Returns:
+        Raw HTML string of the latest Tax Code version.
+
+    Raises:
+        aiohttp.ClientResponseError: On non-200 HTTP status.
+        ValueError: If response exceeds MAX_RESPONSE_BYTES.
+    """
+    delay = getattr(settings, "matsne_request_delay", 2.0)
+    await asyncio.sleep(delay)
+
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
+    headers = {"User-Agent": USER_AGENT}
+    logger.info("matsne_fetch_latest_start", extra={"url": MATSNE_BASE_URL})
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            MATSNE_BASE_URL, timeout=timeout, headers=headers,
+        ) as response:
+            if response.status != 200:
+                raise aiohttp.ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    status=response.status,
+                    message=f"Matsne returned HTTP {response.status}",
+                )
+            raw = await response.read()
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise ValueError(
+                    f"Response too large: {len(raw)} bytes "
+                    f"(limit {MAX_RESPONSE_BYTES})"
+                )
+            html = raw.decode("utf-8", errors="replace")
+            logger.info(
+                "matsne_fetch_latest_complete",
+                extra={"bytes": len(html)},
+            )
+            return html
 
 
 # ─── 3b: Header Parsing ─────────────────────────────────────────────────────
@@ -406,11 +450,13 @@ async def scrape_and_store(
                 },
             )
 
+    version = detect_version(html)
     stats = {
         "articles_count": articles_count,
         "definitions_count": defs_stored,
         "skipped": skipped,
         "errors": errors,
+        "version": version,
     }
     logger.info("scrape_complete", extra=stats)
     return stats
