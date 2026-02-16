@@ -1,36 +1,36 @@
-# Session Handoff — Georgian Tax AI Agent Build (Task 2)
-**Date**: 2026-02-17 00:23
-**Session ID**: cfed22ef-bfe1-4d0a-88a2-61406a90b84f
-**Previous Session**: a1ba5c9d-554f-4446-b1be-cda2e6a04f8e (Tax Agent Planning v5-FINAL)
+# Session Handoff — Georgian Tax AI Agent Build (Tasks 3–4 QA)
+**Date**: 2026-02-17 01:19
+**Session ID**: f3a8ed76-dbbd-4e93-8645-c95f960f61a1
+**Previous Session**: cfed22ef-bfe1-4d0a-88a2-61406a90b84f (Task 2 Models)
 
 ---
 
 ## Current Focus
-**Task 2 COMPLETE.** TaxArticle + Definition models, CRUD stores, 31 unit tests, and 2 Atlas Vector Search indexes created. Full project at 56/56 tests passing.
+**Tasks 3, 4, and QA COMPLETE.** Matsne scraper (25→28 tests), embedding pipeline (9 tests), QA adversarial review done, all 5 findings fixed. 94/94 tests passing.
 
 ## Completed This Session (Feb 16-17, Night)
 
-### Task 2: TaxArticle Model + Definitions + Atlas Index ✅
-- **Opus Planning**: Deep analysis + strategic planning with dry-run simulation
-- **Dry-Run Simulation**: 13 gaps found, 3 CRITICAL fixed:
-  - GAP #4: `@property` lazy store pattern (not constructor injection)
-  - GAP #6: `datetime.date` → `str` for BSON compatibility
-  - GAP #13: `extra="ignore"` for MongoDB `_id` handling
-- **Implementation**: 5 files written in atomic write-verify loop
-  - `app/models/__init__.py` — Package re-exports
-  - `app/models/tax_article.py` — TaxArticle Pydantic model + TaxArticleStore CRUD (159 lines)
-  - `app/models/definition.py` — Definition Pydantic model + DefinitionStore CRUD (156 lines)
-  - `tests/test_models.py` — 20 Pydantic validation tests
-  - `tests/test_crud.py` — 11 mocked CRUD tests
-- **Bug Fixed**: Motor `.find()` is synchronous (returns cursor), but `AsyncMock` wraps it as coroutine → fixed with `MagicMock` for collection
-- **Atlas Vector Indexes**: 2 indexes created via Atlas UI
-  - `tax_articles_vector_index` (embedding + status + article_number) — READY
-  - `definitions_vector_index` (embedding + article_ref) — READY
-- **Seed docs**: Inserted & deleted (collections initialized)
+### Task 3: Matsne Scraper ✅
+- Full HTML scraper for Georgian Tax Code from matsne.gov.ge
+- Transport layer (`fetch_tax_code_html`), parsing, body extraction, cross-references, definitions, lex specialis detection
+- Orchestrator `scrape_and_store` with article/definition upsert
+- 25 unit tests (commit `19e5097`)
 
-### Task 3.0: Matsne Fetch Validation Spike ✅ (Previous Sub-session)
-- Browser-based DOM inspection of matsne.gov.ge
-- HTML selectors identified for article scraping
+### Task 4: Embedding Pipeline ✅
+- `embedding_service.py`: 6 functions using `text-embedding-004` (768-dim)
+- `embed_and_store_all` orchestrator with batch chunking + error isolation
+- 9 mocked unit tests (commit `28da902`)
+
+### QA Adversarial Review + Fixes ✅
+- 5 findings identified (F1–F5), all fixed (commit `7856d97`):
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| F1 | No error isolation in `scrape_and_store` | MEDIUM | try/except per item + errors counter |
+| F2 | `SAMPLE_NON_EXCEPTION_BODY` untested | MEDIUM | Added `test_detect_exception_article_false` |
+| F3 | Missing User-Agent header | LOW | Added `USER_AGENT` constant |
+| F4 | No response size limit | LOW | 50MB cap via `response.read()` |
+| F5 | No-op `.lower()` on Georgian text | LOW | Removed |
 
 ### Test Results
 | Suite | Count |
@@ -40,7 +40,9 @@
 | Health tests | 2 |
 | Model validation | 20 |
 | CRUD tests | 11 |
-| **Total** | **56/56 ✅** |
+| Scraper tests | 28 |
+| Embedding tests | 9 |
+| **Total** | **94/94 ✅** |
 
 ## Production State (Canonical)
 | Service | URL | Status |
@@ -49,19 +51,17 @@
 | Frontend | `https://scoop-frontend-890364845413.europe-west1.run.app` | ✅ Deployed |
 
 ## Atlas Index State
-| Index | Collection | Status | Limit |
-|-------|-----------|--------|-------|
-| `tax_articles_vector_index` | tax_articles | 🟢 READY | 3/3 M0 limit |
-| `definitions_vector_index` | definitions | 🟢 READY | |
-| `vector_index` (scoop_db) | products | 🟢 READY | |
+| Index | Collection | Status |
+|-------|-----------|--------|
+| `tax_articles_vector_index` | tax_articles | 🟢 READY |
+| `definitions_vector_index` | definitions | 🟢 READY |
+| `vector_index` (scoop_db) | products | 🟢 READY |
 
 ## Next Steps (Priority Order)
-1. 🔴 **Task 3: Matsne Scraper** — HTML scraper for Georgian tax code from matsne.gov.ge (6 sub-tasks)
-2. 🔴 **Task 4: Embedding Pipeline** — Generate embeddings for articles + definitions
-3. 🟡 **Task 5: Vector Search + Cross-Reference + Lex Specialis**
-4. 🟡 **Task 6: Tax RAG Agent + Guardrails**
-5. 🟢 **Task 7: API Routes + SSE + Sessions + Auth**
-6. 🟢 **Task 8: Seed + Sync Scripts**
+1. 🔴 **Task 5: Vector Search Pipeline** — Query embeddings, cross-reference resolution, lex specialis ranking
+2. 🟡 **Task 6: Tax RAG Agent + Guardrails**
+3. 🟡 **Task 7: API Routes + SSE + Sessions + Auth**
+4. 🟢 **Task 8: Seed + Sync Scripts**
 
 ## Key Decision Log
 | Decision | Rationale |
@@ -69,9 +69,9 @@
 | Fat Model pattern | Model + Store co-located per file |
 | `@property` lazy collection | Matches `APIKeyStore`, avoids init-order issues |
 | `extra="ignore"` | Silent MongoDB `_id` handling |
-| `date` → `str` | BSON compatibility for `last_amended_date` |
-| None-filtering in `$set` | Prevents accidental embedding overwrites |
-| `MagicMock` for cursor methods | Motor `.find()` is sync, `.to_list()` is async |
+| `response.read()` + size cap | Prevents memory DoS from oversized responses |
+| Error isolation in orchestrators | One failing item shouldn't kill the batch |
+| No `.lower()` for Georgian | mkhedruli script has no case distinction |
 
 ---
-*Handoff created by Antigravity — Task 2 Build Session*
+*Handoff created by Antigravity — Tasks 3-4 + QA Session*
