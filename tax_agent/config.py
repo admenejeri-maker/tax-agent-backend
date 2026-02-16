@@ -1,0 +1,78 @@
+"""
+Configuration for Georgian Tax AI Agent
+Adapted from Scoop AI backend config.py — "Copy-Adapt" strategy
+"""
+import os
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Settings(BaseModel):
+    """Tax Agent application settings with production defaults"""
+
+    # =========================================================================
+    # MongoDB
+    # =========================================================================
+    mongodb_uri: str = Field(default_factory=lambda: os.getenv("MONGODB_URI", ""))
+    database_name: str = Field(
+        default_factory=lambda: os.getenv("DATABASE_NAME", "georgian_tax_db")
+    )
+
+    # =========================================================================
+    # Google AI
+    # =========================================================================
+    gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    embedding_model: str = Field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    )
+
+    # =========================================================================
+    # Tax Agent Settings
+    # =========================================================================
+    similarity_threshold: float = Field(
+        default_factory=lambda: float(os.getenv("SIMILARITY_THRESHOLD", "0.5"))
+    )
+    matsne_request_delay: float = Field(
+        default_factory=lambda: float(os.getenv("MATSNE_REQUEST_DELAY", "2.0"))
+    )
+    search_limit: int = Field(
+        default_factory=lambda: int(os.getenv("SEARCH_LIMIT", "5"))
+    )
+
+    # =========================================================================
+    # Authentication
+    # =========================================================================
+    api_key_secret: str = Field(
+        default_factory=lambda: os.getenv("API_KEY_SECRET", "")
+    )
+    require_api_key: bool = Field(
+        default_factory=lambda: os.getenv("REQUIRE_API_KEY", "false").lower() == "true"
+    )
+    api_key_max_per_ip: int = Field(
+        default_factory=lambda: int(os.getenv("API_KEY_MAX_PER_IP", "10"))
+    )
+
+    # =========================================================================
+    # Server
+    # =========================================================================
+    host: str = "0.0.0.0"
+    port: int = Field(
+        default_factory=lambda: int(os.getenv("PORT", "8080"))
+    )
+    debug: bool = Field(
+        default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true"
+    )
+    rate_limit: int = Field(
+        default_factory=lambda: int(os.getenv("RATE_LIMIT", "30"))
+    )
+    allowed_origins: str = Field(
+        default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+    )
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
