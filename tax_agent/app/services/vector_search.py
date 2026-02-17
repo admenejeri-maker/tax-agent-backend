@@ -33,10 +33,13 @@ class SearchError(Exception):
 # ── Georgian Article Number Detection ─────────────────────────────────────────
 
 ARTICLE_PATTERNS = [
-    r"მუხლი\s*(\d+)",   # Georgian: "მუხლი 81"
-    r"article\s*(\d+)",  # English:  "article 81"
-    r"muxli\s*(\d+)",    # Transliterated: "muxli 81"
+    r"მუხლი\s*([0-9]+)",   # Georgian: "მუხლი 81"
+    r"article\s*([0-9]+)",  # English:  "article 81"
+    r"muxli\s*([0-9]+)",    # Transliterated: "muxli 81"
 ]
+
+# BSON int64 max — prevents MongoDB overflow on absurd article numbers
+_MAX_ARTICLE_NUMBER = 2**63 - 1
 
 
 def detect_article_number(query: str) -> Optional[int]:
@@ -44,11 +47,18 @@ def detect_article_number(query: str) -> Optional[int]:
 
     Supports Georgian, English, and transliterated patterns.
     Returns the first match as an integer, or None if no match.
+    Clamps to BSON int64 range to prevent MongoDB overflow.
     """
+    if not isinstance(query, str):
+        return None
     for pattern in ARTICLE_PATTERNS:
         match = re.search(pattern, query, re.IGNORECASE)
         if match:
-            return int(match.group(1))
+            num = int(match.group(1))
+            if num > _MAX_ARTICLE_NUMBER:
+                logger.warning("article_number_overflow", raw=match.group(1))
+                return None
+            return num
     return None
 
 
@@ -202,6 +212,15 @@ async def search_by_keyword(query: str, limit: int = 5) -> List[dict]:
         return []  # Graceful fallback
 
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+async def _noop() -> list:
+    """No-op coroutine returning [] — used when keyword search is disabled."""
+    return []
+
+
 # ── Hybrid Search ─────────────────────────────────────────────────────────────
 
 
@@ -220,28 +239,38 @@ async def hybrid_search(query: str) -> List[dict]:
         Merged, deduplicated, and ranked list of article dicts.
     """
     # ── Query validation (G5) ──
-    if not query or not query.strip():
+    if not isinstance(query, str) or not query.strip():
         return []
 
     article_num = detect_article_number(query)
     keyword_enabled = settings.keyword_search_enabled
 
-    if article_num:
+    if article_num is not None:
         store = TaxArticleStore()
         # Run all three searches concurrently (F3)
         direct_coro = store.find_by_number(article_num)
         semantic_coro = search_by_semantic(query, limit=4)
-        keyword_coro = search_by_keyword(query, limit=3) if keyword_enabled else asyncio.sleep(0)
+        keyword_coro = search_by_keyword(query, limit=3) if keyword_enabled else _noop()
 
-        direct, semantic, keyword_raw = await asyncio.gather(
-            direct_coro, semantic_coro, keyword_coro
+        gather_results = await asyncio.gather(
+            direct_coro, semantic_coro, keyword_coro,
+            return_exceptions=True,
         )
+        direct = gather_results[0] if not isinstance(gather_results[0], BaseException) else None
+        semantic = gather_results[1] if not isinstance(gather_results[1], BaseException) else []
+        keyword_raw = gather_results[2] if not isinstance(gather_results[2], BaseException) else []
         keyword = keyword_raw if isinstance(keyword_raw, list) else []
+
+        # Log any partial failures
+        for i, label in enumerate(["direct", "semantic", "keyword"]):
+            if isinstance(gather_results[i], BaseException):
+                logger.error("partial_search_failure", source=label, error=str(gather_results[i]))
 
         results = []
         if direct:
             direct_dict = direct if isinstance(direct, dict) else direct.model_dump()
             direct_dict["score"] = 1.0
+            direct_dict["search_type"] = "direct"
             direct_dict["is_cross_ref"] = False
             results.append(direct_dict)
         results.extend(semantic)
@@ -249,11 +278,20 @@ async def hybrid_search(query: str) -> List[dict]:
     else:
         # Run semantic + keyword concurrently (F3)
         semantic_coro = search_by_semantic(query)
-        keyword_coro = search_by_keyword(query) if keyword_enabled else asyncio.sleep(0)
+        keyword_coro = search_by_keyword(query) if keyword_enabled else _noop()
 
-        semantic, keyword_raw = await asyncio.gather(
-            semantic_coro, keyword_coro
+        gather_results = await asyncio.gather(
+            semantic_coro, keyword_coro,
+            return_exceptions=True,
         )
+        semantic = gather_results[0] if not isinstance(gather_results[0], BaseException) else []
+        keyword_raw = gather_results[1] if not isinstance(gather_results[1], BaseException) else []
+
+        # Log any partial failures
+        for i, label in enumerate(["semantic", "keyword"]):
+            if isinstance(gather_results[i], BaseException):
+                logger.error("partial_search_failure", source=label, error=str(gather_results[i]))
+
         keyword = keyword_raw if isinstance(keyword_raw, list) else []
         results = semantic + keyword
 

@@ -1,9 +1,9 @@
 """
 Tests for Vector Search Pipeline — Task 5
 
-16 tests covering: article number detection, semantic search, keyword search,
+17+ tests covering: article number detection, semantic search, keyword search,
 hybrid search (3-way merge), cross-reference enrichment, lex specialis
-re-ranking, deduplication, and error handling.
+re-ranking, deduplication, error handling, and adversarial inputs.
 """
 
 import pytest
@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.vector_search import (
     SearchError,
+    _MAX_ARTICLE_NUMBER,
+    _noop,
     _rrf_score,
     detect_article_number,
     enrich_with_cross_refs,
@@ -436,3 +438,81 @@ async def test_hybrid_search_keyword_disabled(mock_semantic, mock_keyword, mock_
     mock_keyword.assert_not_called()
     assert len(results) == 1
     assert results[0]["article_number"] == 81
+
+
+# ── T18–T23: Adversarial Input Tests ─────────────────────────────────────────
+
+
+def test_detect_article_non_string_input():
+    """T18: Non-string input must return None, not crash."""
+    assert detect_article_number(123) is None
+    assert detect_article_number(None) is None
+    assert detect_article_number(["article 1"]) is None
+
+
+def test_detect_article_bson_overflow():
+    """T19: Article number exceeding BSON int64 max must return None."""
+    huge = str(_MAX_ARTICLE_NUMBER + 1)
+    assert detect_article_number(f"article {huge}") is None
+    # Valid large number just under limit should still work
+    assert detect_article_number("article 999999") == 999999
+
+
+def test_detect_article_arabic_numerals_rejected():
+    """T20: Arabic-Indic numerals (١٨٠) must NOT match — ASCII only."""
+    assert detect_article_number("article ١٨٠") is None
+    assert detect_article_number("მუხლი ٨١") is None
+    # But standard digits still work
+    assert detect_article_number("article 180") == 180
+
+
+def test_detect_article_zero():
+    """T21: Article 0 must be detected (not skipped by truthiness)."""
+    result = detect_article_number("article 0")
+    assert result == 0
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.settings")
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
+@patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
+async def test_hybrid_partial_failure_resilience(mock_semantic, mock_keyword, mock_settings):
+    """T22: If semantic search fails, keyword results still returned."""
+    mock_settings.keyword_search_enabled = True
+    mock_semantic.side_effect = SearchError("embedding API down")
+    mock_keyword.return_value = [
+        {"article_number": 81, "score": 3.5, "search_type": "keyword",
+         "kari": "V", "tavi": "XIII", "title": "T", "body": "B",
+         "related_articles": [], "is_exception": False},
+    ]
+
+    results = await hybrid_search("income tax")
+
+    # Should NOT crash — keyword results survive
+    assert len(results) == 1
+    assert results[0]["article_number"] == 81
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.settings")
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
+@patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
+@patch("app.services.vector_search.TaxArticleStore")
+async def test_hybrid_direct_tagged_as_direct(mock_store_cls, mock_semantic, mock_keyword, mock_settings):
+    """T23: Direct lookup results must have search_type='direct'."""
+    mock_settings.keyword_search_enabled = False
+
+    mock_store = MagicMock()
+    mock_store.find_by_number = AsyncMock(return_value={
+        "article_number": 81, "kari": "V", "tavi": "XIII",
+        "title": "T", "body": "B", "related_articles": [], "is_exception": False,
+    })
+    mock_store_cls.return_value = mock_store
+
+    mock_semantic.return_value = []
+
+    results = await hybrid_search("მუხლი 81")
+
+    assert len(results) == 1
+    assert results[0]["search_type"] == "direct"
+    assert results[0]["score"] == 1.0
