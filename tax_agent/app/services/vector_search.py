@@ -1,11 +1,13 @@
 """
 Vector Search Pipeline — Task 5
 
-Implements hybrid search (semantic + direct lookup), cross-reference
-enrichment, lex specialis re-ranking, and deduplication for the
-Georgian Tax Code RAG pipeline.
+Implements hybrid search (semantic + direct lookup + keyword),
+cross-reference enrichment, lex specialis re-ranking, and
+Reciprocal Rank Fusion (RRF) deduplication for the Georgian
+Tax Code RAG pipeline.
 """
 
+import asyncio
 import re
 from typing import List, Optional
 
@@ -145,6 +147,9 @@ async def search_by_keyword(query: str, limit: int = 5) -> List[dict]:
     Returns:
         List of article dicts with 'score' and 'search_type' fields.
     """
+    if not query or not query.strip():
+        return []
+
     try:
         pipeline = [
             {
@@ -223,9 +228,15 @@ async def hybrid_search(query: str) -> List[dict]:
 
     if article_num:
         store = TaxArticleStore()
-        direct = await store.find_by_number(article_num)
-        semantic = await search_by_semantic(query, limit=4)
-        keyword = await search_by_keyword(query, limit=3) if keyword_enabled else []
+        # Run all three searches concurrently (F3)
+        direct_coro = store.find_by_number(article_num)
+        semantic_coro = search_by_semantic(query, limit=4)
+        keyword_coro = search_by_keyword(query, limit=3) if keyword_enabled else asyncio.sleep(0)
+
+        direct, semantic, keyword_raw = await asyncio.gather(
+            direct_coro, semantic_coro, keyword_coro
+        )
+        keyword = keyword_raw if isinstance(keyword_raw, list) else []
 
         results = []
         if direct:
@@ -236,8 +247,14 @@ async def hybrid_search(query: str) -> List[dict]:
         results.extend(semantic)
         results.extend(keyword)
     else:
-        semantic = await search_by_semantic(query)
-        keyword = await search_by_keyword(query) if keyword_enabled else []
+        # Run semantic + keyword concurrently (F3)
+        semantic_coro = search_by_semantic(query)
+        keyword_coro = search_by_keyword(query) if keyword_enabled else asyncio.sleep(0)
+
+        semantic, keyword_raw = await asyncio.gather(
+            semantic_coro, keyword_coro
+        )
+        keyword = keyword_raw if isinstance(keyword_raw, list) else []
         results = semantic + keyword
 
     return merge_and_rank(results)
@@ -325,25 +342,74 @@ def rerank_with_exceptions(results: List[dict]) -> List[dict]:
     return reranked
 
 
-# ── Merge & Deduplicate ──────────────────────────────────────────────────────
+# ── Merge & Deduplicate (RRF — F1 Fix) ──────────────────────────────────────
+
+RRF_K = 60  # Standard RRF constant (Cormack et al. 2009)
+
+
+def _rrf_score(ranked_lists: List[List[dict]]) -> List[dict]:
+    """Compute Reciprocal Rank Fusion scores across ranked lists.
+
+    RRF is scale-agnostic: it converts raw scores (which may be on
+    different scales like BM25 vs cosine similarity) into rank-based
+    fusion scores.  Formula: RRF(d) = Σ 1 / (K + rank_i(d))
+
+    Args:
+        ranked_lists: List of result lists, each pre-sorted by their
+                      native score descending.
+
+    Returns:
+        List of dicts with 'rrf_score' added, sorted by RRF score descending.
+    """
+    scores: dict[int, float] = {}  # article_number → cumulative RRF score
+    registry: dict[int, dict] = {}  # article_number → best dict entry
+
+    for rlist in ranked_lists:
+        for rank, r in enumerate(rlist, start=1):
+            article_num = r.get("article_number")
+            if article_num is None:
+                continue
+            rrf = 1.0 / (RRF_K + rank)
+            scores[article_num] = scores.get(article_num, 0.0) + rrf
+            # Keep the entry with the highest native score
+            if article_num not in registry or r.get("score", 0) > registry[article_num].get("score", 0):
+                registry[article_num] = r
+
+    # Build output sorted by RRF score
+    fused = []
+    for article_num in sorted(scores, key=scores.get, reverse=True):
+        entry = dict(registry[article_num])
+        entry["rrf_score"] = round(scores[article_num], 6)
+        fused.append(entry)
+
+    return fused
 
 
 def merge_and_rank(results: List[dict]) -> List[dict]:
-    """Deduplicate results by article_number, keeping the highest score.
+    """Deduplicate results using Reciprocal Rank Fusion (RRF).
+
+    Splits results by search_type, ranks each source independently,
+    then fuses using RRF to produce a scale-agnostic merged ranking.
 
     Args:
         results: List of article dicts, possibly with duplicates.
 
     Returns:
-        Deduplicated list sorted by score (descending).
+        Deduplicated list sorted by RRF score (descending).
     """
-    seen: set[int] = set()
-    unique: List[dict] = []
+    if not results:
+        return []
 
-    for r in sorted(results, key=lambda x: x.get("score", 0), reverse=True):
-        article_num = r.get("article_number")
-        if article_num is not None and article_num not in seen:
-            seen.add(article_num)
-            unique.append(r)
+    # ── Split by source for independent ranking ──
+    buckets: dict[str, List[dict]] = {}
+    for r in results:
+        source = r.get("search_type", "semantic")
+        buckets.setdefault(source, []).append(r)
 
-    return unique
+    # Sort each bucket by its native score (descending)
+    ranked_lists = [
+        sorted(bucket, key=lambda x: x.get("score", 0), reverse=True)
+        for bucket in buckets.values()
+    ]
+
+    return _rrf_score(ranked_lists)

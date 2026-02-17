@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.vector_search import (
     SearchError,
+    _rrf_score,
     detect_article_number,
     enrich_with_cross_refs,
     hybrid_search,
@@ -255,18 +256,20 @@ def test_rerank_with_exceptions():
 
 
 def test_merge_and_rank_dedup():
-    """T11: Duplicates should be removed, keeping the highest score."""
+    """T11: Duplicates should be removed via RRF, keeping highest-scored entry."""
     results = [
-        {"article_number": 81, "score": 0.60},
-        {"article_number": 82, "score": 0.85},
-        {"article_number": 81, "score": 0.90},  # Duplicate, higher score
+        {"article_number": 81, "score": 0.60, "search_type": "semantic"},
+        {"article_number": 82, "score": 0.85, "search_type": "semantic"},
+        {"article_number": 81, "score": 5.0, "search_type": "keyword"},  # Dup, keyword
     ]
 
     merged = merge_and_rank(results)
 
     assert len(merged) == 2
+    # Article 81 appears in BOTH ranked lists → higher RRF score
     assert merged[0]["article_number"] == 81
-    assert merged[0]["score"] == 0.90  # Highest score kept
+    assert merged[0]["score"] == 5.0  # Keeps highest native score
+    assert "rrf_score" in merged[0]
     assert merged[1]["article_number"] == 82
 
 
@@ -366,6 +369,8 @@ async def test_hybrid_search_with_keyword_results(mock_semantic, mock_keyword):
     assert len(results) == 2
     article_numbers = {r["article_number"] for r in results}
     assert article_numbers == {81, 82}
+    # RRF scores should be present
+    assert all("rrf_score" in r for r in results)
 
 
 @pytest.mark.asyncio
@@ -402,7 +407,32 @@ async def test_hybrid_search_direct_plus_keyword(
 
     # 3-way merge: direct(81) + semantic(82) + keyword(83)
     assert len(results) == 3
-    # keyword score 3.1 > direct 1.0 > semantic 0.75
-    assert results[0]["article_number"] == 83  # Keyword has highest score
     article_numbers = {r["article_number"] for r in results}
     assert article_numbers == {81, 82, 83}
+    # All results should have RRF scores
+    assert all("rrf_score" in r for r in results)
+
+
+# ── T17: Feature Flag Disabled ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.settings")
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
+@patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
+async def test_hybrid_search_keyword_disabled(mock_semantic, mock_keyword, mock_settings):
+    """T17: When keyword_search_enabled=False, keyword search must be skipped."""
+    mock_settings.keyword_search_enabled = False
+
+    mock_semantic.return_value = [
+        {"article_number": 81, "score": 0.85, "kari": "V", "tavi": "XIII",
+         "title": "T", "body": "B", "related_articles": [], "is_exception": False},
+    ]
+
+    results = await hybrid_search("income tax rate")
+
+    # Semantic should be called, keyword should NOT
+    mock_semantic.assert_called_once()
+    mock_keyword.assert_not_called()
+    assert len(results) == 1
+    assert results[0]["article_number"] == 81
