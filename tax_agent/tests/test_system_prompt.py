@@ -110,3 +110,43 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(context_chunks=["context"])
         assert "## ინსტრუქციები" in prompt
         assert "ციტატას" in prompt  # citation requirement
+
+    # ── Step 5: CoL Logic Rules ───────────────────────────────────
+
+    def test_logic_rules_injected(self):
+        """Logic rules text appears in the generated prompt."""
+        rules = "IF VAT > 100K THEN register"
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            logic_rules=rules,
+        )
+        assert rules in prompt
+        assert "ლოგიკის წესები" in prompt
+
+    def test_logic_rules_none_no_section(self):
+        """None logic_rules does not inject the section header."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            logic_rules=None,
+        )
+        assert "ლოგიკის წესები" not in prompt
+
+    def test_logic_rules_before_context(self):
+        """Logic rules section appears before context section."""
+        rules = "RULE_MARKER_FOR_ORDER_TEST"
+        prompt = build_system_prompt(
+            context_chunks=["CONTEXT_MARKER_FOR_ORDER_TEST"],
+            logic_rules=rules,
+        )
+        rules_pos = prompt.index("ლოგიკის წესები")
+        context_pos = prompt.index("CONTEXT_MARKER_FOR_ORDER_TEST")
+        assert rules_pos < context_pos
+
+    def test_logic_rules_georgian(self):
+        """Georgian UTF-8 content in logic rules renders correctly."""
+        rules = "თუ დღგ-ს ბრუნვა > 100,000 ლარი → რეგისტრაცია სავალდებულოა"
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            logic_rules=rules,
+        )
+        assert "100,000 ლარი" in prompt

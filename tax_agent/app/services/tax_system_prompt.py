@@ -91,6 +91,7 @@ def build_system_prompt(
     source_refs: Optional[List[dict]] = None,
     is_red_zone: bool = False,
     temporal_year: Optional[int] = None,
+    logic_rules: Optional[str] = None,
 ) -> str:
     """Build the full system prompt for Gemini generation.
 
@@ -100,6 +101,7 @@ def build_system_prompt(
         source_refs: Citation references with id, article_number, title.
         is_red_zone: Whether the query triggers calculation disclaimers.
         temporal_year: Past year detected in query, if any.
+        logic_rules: Pre-loaded CoL reasoning rules from logic_loader, or None.
 
     Returns:
         Complete system prompt string with all dynamic sections assembled.
@@ -116,6 +118,10 @@ def build_system_prompt(
             parts.append(
                 "\n\n## ტერმინთა განმარტებები\n" + "\n".join(defn_lines)
             )
+
+    # ── Inject CoL logic rules (Step 5)
+    if logic_rules:
+        parts.append("\n\n## ლოგიკის წესები\n" + logic_rules)
 
     # ── Inject context chunks
     if context_chunks:
