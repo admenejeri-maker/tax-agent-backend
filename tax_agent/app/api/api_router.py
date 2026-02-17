@@ -50,6 +50,13 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 
+def _extract_user_id(key_doc: dict | None) -> str:
+    """Safely extract user_id from key_doc. Returns 'anonymous' when auth is disabled."""
+    if key_doc is None:
+        return "anonymous"
+    return str(key_doc.get("user_id", key_doc.get("_id", "anonymous")))
+
+
 # ─── SSE Helper ───────────────────────────────────────────────────────────────
 
 def _sse_event(event: str, data: Any) -> str:
@@ -77,9 +84,7 @@ async def ask_question(
     key_doc: Dict[str, Any] = Depends(verify_api_key),
 ):
     """Ask a question about Georgian tax law."""
-    user_id = str(key_doc.get("user_id", key_doc.get("_id", "")))
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid API key: no user identity")
+    user_id = _extract_user_id(key_doc)
 
     # ── Create or resume session ──────────────────────────────────────
     conversation_id = body.conversation_id
@@ -139,9 +144,7 @@ async def ask_stream(
     key_doc: Dict[str, Any] = Depends(verify_api_key),
 ):
     """Stream a RAG answer via Server-Sent Events (simulated chunking)."""
-    user_id = str(key_doc.get("user_id", key_doc.get("_id", "")))
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid API key: no user identity")
+    user_id = _extract_user_id(key_doc)
 
     async def generate():
         try:
@@ -261,7 +264,7 @@ async def list_sessions(
     key_doc: Dict[str, Any] = Depends(verify_api_key),
 ):
     """List the current user's conversation sessions."""
-    user_id = str(key_doc.get("user_id", key_doc.get("_id")))
+    user_id = _extract_user_id(key_doc)
     sessions = await conversation_store.list_sessions(user_id)
     return [SessionListItem(**s) for s in sessions]
 
@@ -279,7 +282,7 @@ async def get_session_history(
     key_doc: Dict[str, Any] = Depends(verify_api_key),
 ):
     """Load conversation history for a specific session."""
-    user_id = str(key_doc.get("user_id", key_doc.get("_id")))
+    user_id = _extract_user_id(key_doc)
     session = await conversation_store.get_history(conversation_id, user_id)
 
     if not session:
@@ -305,7 +308,7 @@ async def clear_session(
     key_doc: Dict[str, Any] = Depends(verify_api_key),
 ):
     """Delete a conversation session."""
-    user_id = str(key_doc.get("user_id", key_doc.get("_id")))
+    user_id = _extract_user_id(key_doc)
     deleted = await conversation_store.clear_session(body.conversation_id, user_id)
 
     if not deleted:

@@ -20,7 +20,7 @@ logger = structlog.get_logger(__name__)
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 MAX_EMBEDDING_CHARS = 8000  # ~2000 Georgian tokens (4 bytes/char avg)
-EXPECTED_DIMENSIONS = 768
+EXPECTED_DIMENSIONS = 3072  # gemini-embedding-001 output dimensions
 DEFAULT_BATCH_SIZE = 100  # Conservative; Google docs say 250 max
 
 # ─── Lazy Client Singleton ───────────────────────────────────────────────────

@@ -108,7 +108,7 @@ async def search_by_semantic(
     ]
 
     try:
-        db = db_manager.get_database()
+        db = db_manager.db
         collection = db["tax_articles"]
         cursor = collection.aggregate(pipeline)
         results = await cursor.to_list(length=effective_limit)

@@ -134,9 +134,9 @@ async def answer_question(
         search_results = await hybrid_search(query)
 
         context_chunks = [
-            r.get("content", r.get("text", ""))
+            r.get("body", "")
             for r in search_results
-            if r.get("content") or r.get("text")
+            if r.get("body")
         ]
 
         # ── Step 3: Build system prompt ───────────────────────────
@@ -170,7 +170,7 @@ async def answer_question(
 
         # ── Step 5: Assemble response ─────────────────────────────
         source_refs = [
-            r.get("article_number", "unknown")
+            str(r.get("article_number", "unknown"))
             for r in search_results
             if r.get("article_number")
         ]

@@ -128,6 +128,10 @@ app.include_router(auth_router, prefix="/auth")
 # API endpoints at /api
 app.include_router(api_router, prefix="/api")
 
+# Frontend compat endpoints (no prefix — routes have /api/v1/... built in)
+from app.api.frontend_compat import compat_router
+app.include_router(compat_router)
+
 
 @app.get("/health")
 async def health():

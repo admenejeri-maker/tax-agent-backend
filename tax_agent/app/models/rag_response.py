@@ -8,7 +8,7 @@ All code paths return a RAGResponse — never an unstructured dict.
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SourceMetadata(BaseModel):
@@ -18,6 +18,14 @@ class SourceMetadata(BaseModel):
     chapter: Optional[str] = None
     title: Optional[str] = None
     score: float = 0.0
+
+    @field_validator("article_number", mode="before")
+    @classmethod
+    def coerce_article_number(cls, v):
+        """MongoDB stores article_number as int; coerce to str."""
+        if v is None:
+            return v
+        return str(v)
 
 
 class RAGResponse(BaseModel):
