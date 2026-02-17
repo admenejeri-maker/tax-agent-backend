@@ -346,7 +346,7 @@ class TestCriticWiring:
         ):
             mock_settings.router_enabled = False
             mock_settings.critic_enabled = True
-            mock_settings.citation_enabled = False
+            mock_settings.citation_enabled = True
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
@@ -380,7 +380,7 @@ class TestCriticWiring:
         ):
             mock_settings.router_enabled = False
             mock_settings.critic_enabled = True
-            mock_settings.citation_enabled = False
+            mock_settings.citation_enabled = True
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
@@ -431,3 +431,72 @@ class TestCriticWiring:
 
             mock_critic.assert_not_called()
 
+
+# ─── Bug #10: PII sanitization in error logs ────────────────────────────────
+
+
+class TestPIISanitization:
+    """Tests for the _sanitize_for_log PII scrubber."""
+
+    def test_pii_scrubbed_from_error_log(self):
+        """Bug #10: Digit sequences of 5+ chars are redacted in log output."""
+        from app.services.rag_pipeline import _sanitize_for_log
+
+        # Phone number / ID number redacted
+        result = _sanitize_for_log("ჩემი ID არის 12345678901 და")
+        assert "[REDACTED]" in result
+        assert "12345678901" not in result
+
+    def test_short_numbers_not_redacted(self):
+        """Short digit sequences (< 5 chars) should pass through."""
+        from app.services.rag_pipeline import _sanitize_for_log
+
+        result = _sanitize_for_log("2022 წელს გავყიდე 1234 ლარი")
+        assert "2022" in result
+        assert "1234" in result
+
+    def test_sanitize_truncates_to_max_len(self):
+        """Output is truncated to max_len."""
+        from app.services.rag_pipeline import _sanitize_for_log
+
+        long_query = "ა" * 200
+        result = _sanitize_for_log(long_query, max_len=50)
+        assert len(result) == 50
+
+
+# ─── Bug #6: Critic skipped when no sources ──────────────────────────────────
+
+
+class TestCriticSkippedNoSources:
+    """Bug #6: Critic should be skipped when citations are disabled."""
+
+    @pytest.mark.asyncio
+    async def test_critic_skipped_when_no_sources(self):
+        """Bug #6: critic_enabled=True but citation_enabled=False → critic NOT called."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_logic_rules") as mock_logic,
+            patch("app.services.rag_pipeline.critique_answer", new_callable=AsyncMock) as mock_critic,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = True
+            mock_settings.citation_enabled = False  # No sources → critic skipped
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            mock_search.return_value = _mock_search_results_kari()
+            mock_terms.return_value = []
+            mock_logic.return_value = None
+            mock_asyncio.to_thread = AsyncMock(
+                return_value=_mock_gemini_response("No-source answer.")
+            )
+
+            result = await answer_question("test")
+
+            mock_critic.assert_not_called()
+            assert "⚠️" not in result.answer

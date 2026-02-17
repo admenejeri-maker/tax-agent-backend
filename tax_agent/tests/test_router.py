@@ -65,3 +65,35 @@ async def test_route_result_immutable():
     result = await route_query("დღგ test")
     with pytest.raises(AttributeError):
         result.domain = "OTHER"
+
+
+# ─── Bug #7: New domains ────────────────────────────────────────────────────
+
+
+async def test_route_excise_query():
+    """Bug #7: 'აქციზის განაკვეთი' routes to EXCISE domain."""
+    result = await route_query("აქციზის განაკვეთი რამდენია?")
+    assert result.domain == "EXCISE"
+    assert result.confidence == 1.0
+    assert result.method == "keyword"
+
+
+# ─── Bug #1: Multi-domain keyword routing ───────────────────────────────────
+
+
+async def test_route_multi_domain_ambiguous():
+    """Bug #1: Query with equal keyword hits across domains → GENERAL."""
+    # 'დღგ' → VAT (1 hit), 'საშემოსავლო' → INCOME_TAX (1 hit) = tie
+    result = await route_query("დღგ და საშემოსავლო")
+    assert result.domain == "GENERAL"
+    assert result.confidence == 0.5
+    assert result.method == "keyword"
+
+
+async def test_route_multi_domain_dominant():
+    """Bug #1: Query with dominant keyword hits → picks that domain."""
+    # 'დღგ' + 'დამატებული ღირებულების' → VAT (2 hits) vs 'საშემოსავლო' → INCOME (1 hit)
+    result = await route_query("დღგ და დამატებული ღირებულების საშემოსავლო")
+    assert result.domain == "VAT"
+    assert result.confidence == 0.8
+    assert result.method == "keyword"

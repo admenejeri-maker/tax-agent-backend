@@ -13,6 +13,7 @@ Stateless: accepts `history` as a parameter (no session state stored).
 """
 
 import asyncio
+import re
 from typing import List, Optional
 
 import structlog
@@ -37,6 +38,11 @@ from app.services.logic_loader import get_logic_rules
 from app.services.critic import critique_answer
 
 logger = structlog.get_logger(__name__)
+
+
+def _sanitize_for_log(text: str, max_len: int = 50) -> str:
+    """Strip potential PII (digit sequences 5+) from log text."""
+    return re.sub(r'\d{5,}', '[REDACTED]', text)[:max_len]
 
 
 def _build_contents(
@@ -213,17 +219,20 @@ async def answer_question(
         # ── Step 4.5: Critic QA review (gated) ──────────────────
         confidence = _calculate_confidence(search_results)
         if settings.critic_enabled:
-            critic_result = await critique_answer(
-                answer=answer_text,
-                source_refs=source_refs or [],
-                confidence=confidence,
-            )
-            if not critic_result.approved and critic_result.feedback:
-                logger.warning(
-                    "critic_rejected",
-                    feedback=critic_result.feedback,
+            if not source_refs:
+                logger.debug("critic_skipped_no_sources")
+            else:
+                critic_result = await critique_answer(
+                    answer=answer_text,
+                    source_refs=source_refs,
+                    confidence=confidence,
                 )
-                answer_text += f"\n\n⚠️ {critic_result.feedback}"
+                if not critic_result.approved and critic_result.feedback:
+                    logger.warning(
+                        "critic_rejected",
+                        feedback=critic_result.feedback,
+                    )
+                    answer_text += f"\n\n⚠️ {critic_result.feedback}"
 
         # ── Step 5: Assemble response ─────────────────────────────
         source_refs_list = [
@@ -249,7 +258,7 @@ async def answer_question(
         )
 
     except Exception as e:
-        logger.error("rag_pipeline_failed", error=str(e), query=query[:50])
+        logger.error("rag_pipeline_failed", error=str(e), query=_sanitize_for_log(query))
         return RAGResponse(
             answer="",
             error=f"RAG pipeline error: {str(e)}",

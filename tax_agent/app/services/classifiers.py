@@ -10,6 +10,7 @@ Three classifiers that run BEFORE vector search to enrich query context:
 All classifiers are standalone and independently testable.
 """
 
+import datetime
 import re
 from typing import List, Optional
 
@@ -97,5 +98,7 @@ def detect_past_date(query: str) -> tuple[bool, Optional[int]]:
     match = PAST_DATE_PATTERN.search(query)
     if match:
         year = int(match.group(1))
-        return True, year
+        current_year = datetime.datetime.now().year
+        if year < current_year:
+            return True, year
     return False, None

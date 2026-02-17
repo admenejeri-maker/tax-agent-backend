@@ -39,6 +39,9 @@ KEYWORD_MAP: Dict[str, List[str]] = {
     "VAT": ["დღგ", "დამატებული ღირებულების"],
     "INCOME_TAX": ["საშემოსავლო", "მოგების გადასახადი"],
     "PROPERTY_TAX": ["ქონების გადასახადი"],
+    "EXCISE": ["აქციზ", "აქციზი"],
+    "CUSTOMS": ["საბაჟო", "იმპორტ"],
+    "MICRO_BUSINESS": ["მიკრობიზნეს", "მცირე ბიზნეს"],
 }
 
 
@@ -64,11 +67,25 @@ async def route_query(query: str) -> RouteResult:
 
     query_lower = query.lower()
 
-    # Tier 1: Keyword scan
+    # Tier 1: Keyword scan (multi-domain aware)
+    matches: Dict[str, int] = {}
     for domain, keywords in KEYWORD_MAP.items():
-        if any(kw in query_lower for kw in keywords):
+        count = sum(1 for kw in keywords if kw in query_lower)
+        if count > 0:
+            matches[domain] = count
+
+    if matches:
+        if len(matches) == 1:
+            domain = next(iter(matches))
             logger.info("route_keyword_match", domain=domain, query=query[:50])
             return RouteResult(domain=domain, confidence=1.0, method="keyword")
+        sorted_matches = sorted(matches.items(), key=lambda x: x[1], reverse=True)
+        if sorted_matches[0][1] > sorted_matches[1][1]:
+            domain = sorted_matches[0][0]
+            logger.info("route_keyword_best_match", domain=domain, matches=matches, query=query[:50])
+            return RouteResult(domain=domain, confidence=0.8, method="keyword")
+        logger.info("route_ambiguous", matches=matches, query=query[:50])
+        return RouteResult(domain="GENERAL", confidence=0.5, method="keyword")
 
     # Tier 2: Semantic fallback (stub)
     # TODO: Load from data/router_exemplars.json, embed query, cosine similarity

@@ -51,6 +51,20 @@ class TestDetectPastDate:
         assert warning is False
         assert year is None
 
+    def test_detect_past_date_future_year(self):
+        """Bug #9: Future year '2099 წელს' should NOT trigger temporal warning."""
+        warning, year = detect_past_date("2099 წელს რა იქნება?")
+        assert warning is False
+        assert year is None
+
+    def test_detect_past_date_current_year(self):
+        """Bug #9: Current year should NOT trigger temporal warning."""
+        import datetime
+        current = datetime.datetime.now().year
+        warning, year = detect_past_date(f"{current} წელს მაინტერესებს")
+        assert warning is False
+        assert year is None
+
 
 # ─── Term Resolver ───────────────────────────────────────────────────────────
 

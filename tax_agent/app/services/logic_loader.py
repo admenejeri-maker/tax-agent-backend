@@ -45,15 +45,26 @@ def get_logic_rules(domain: str) -> Optional[str]:
 
     if domain not in _cache:
         path = LOGIC_DIR / f"{domain.lower()}_rules.md"
+        # Guard: resolved path must stay within LOGIC_DIR
         try:
-            _cache[domain] = path.read_text(encoding="utf-8") if path.exists() else None
+            resolved = path.resolve()
+            if not resolved.is_relative_to(LOGIC_DIR.resolve()):
+                logger.warning("logic_loader_path_traversal", domain=domain)
+                return None
+        except (ValueError, OSError):
+            return None
+        try:
+            if path.exists():
+                _cache[domain] = path.read_text(encoding="utf-8")
+            # Don't cache missing files — allows hot-reload
         except (PermissionError, UnicodeDecodeError, OSError) as exc:
             logger.warning("logic_loader_read_error", domain=domain, error=str(exc))
-            _cache[domain] = None
+            # Don't cache errors either — allows retry
 
-        if _cache[domain] is not None:
-            logger.info("logic_rules_loaded", domain=domain, chars=len(_cache[domain]))
-        else:
-            logger.debug("logic_rules_not_found", domain=domain)
+    result = _cache.get(domain)
+    if result is not None:
+        logger.info("logic_rules_loaded", domain=domain, chars=len(result))
+    else:
+        logger.debug("logic_rules_not_found", domain=domain)
 
-    return _cache[domain]
+    return result

@@ -108,3 +108,33 @@ def test_clear_cache_resets_state(monkeypatch, logic_dir):
 
     clear_cache()
     assert "VAT" not in logic_loader._cache
+
+
+# ─── Bug #2: Path traversal guard ───────────────────────────────────────────
+
+
+def test_path_traversal_blocked(monkeypatch, logic_dir):
+    """Bug #2: Domain '../../etc/passwd' must return None (path escapes LOGIC_DIR)."""
+    monkeypatch.setattr(logic_loader, "LOGIC_DIR", logic_dir)
+    monkeypatch.setenv("LOGIC_RULES_ENABLED", "true")
+    from config import Settings
+    monkeypatch.setattr(logic_loader, "settings", Settings())
+
+    result = get_logic_rules("../../etc/passwd")
+    assert result is None
+    assert "../../etc/passwd" not in logic_loader._cache
+
+
+# ─── Bug #4: Cache poisoning guard ──────────────────────────────────────────
+
+
+def test_missing_file_not_cached(monkeypatch, logic_dir):
+    """Bug #4: Missing domain file should NOT be cached as None."""
+    monkeypatch.setattr(logic_loader, "LOGIC_DIR", logic_dir)
+    monkeypatch.setenv("LOGIC_RULES_ENABLED", "true")
+    from config import Settings
+    monkeypatch.setattr(logic_loader, "settings", Settings())
+
+    result = get_logic_rules("NONEXISTENT")
+    assert result is None
+    assert "NONEXISTENT" not in logic_loader._cache
