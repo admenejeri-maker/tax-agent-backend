@@ -1,12 +1,12 @@
 """
-Test System Prompt — Task 6b
-==============================
+Test System Prompt — Tasks 2, 3
+================================
 
-4 tests verifying system prompt construction:
-- Base prompt always present
-- Context chunks injected correctly
-- Red zone disclaimer appended
-- Temporal warning with year substitution
+14 tests verifying system prompt construction:
+- Base prompt, context injection, disclaimers, definitions, fallback (6 core)
+- Disambiguation rules: section present, max-1-question, already-clarified (3 Task 2)
+- Empathic persona, 4-step format, few-shot example (3 Task 3)
+- Guardrails prohibition block, instructions section (2 QA hardening)
 """
 
 from app.services.tax_system_prompt import (
@@ -98,3 +98,15 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(context_chunks=["context"])
         assert "კარგი პასუხი" in prompt   # GOOD marker
         assert "არასწორი პასუხი" in prompt  # BAD marker
+
+    # ── QA Move 5: Hardening ──────────────────────────────────────────
+
+    def test_prohibition_block_present(self):
+        """Prohibition rules are in the base system prompt."""
+        assert "აკრძალულია" in BASE_SYSTEM_PROMPT
+
+    def test_instructions_section_present(self):
+        """Instructions section with citation and brevity rules is present."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "## ინსტრუქციები" in prompt
+        assert "ციტატას" in prompt  # citation requirement
