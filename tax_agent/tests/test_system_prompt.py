@@ -67,3 +67,34 @@ class TestBuildSystemPrompt:
     def test_disambiguation_section_present(self):
         """Disambiguation instruction is part of base system prompt."""
         assert "დამაზუსტებელი კითხვა" in BASE_SYSTEM_PROMPT
+
+    def test_disambiguation_max_one_question_rule(self):
+        """The 'max 1 question' rule is in the built prompt."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "მაქსიმუმ 1" in prompt
+
+    def test_disambiguation_already_clarified_rule(self):
+        """The 'already clarified → answer directly' rule is in the prompt."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "უკვე დააზუსტა" in prompt
+
+    # ── Task 3: Prompt Upgrade ────────────────────────────────────────
+
+    def test_empathic_persona_header(self):
+        """Upgraded prompt contains empathic consultant persona."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "კონსულტანტი" in prompt  # NEW word, not in old prompt
+
+    def test_response_format_four_steps(self):
+        """Prompt contains the 4-step structured response format."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "მოკლე პასუხი" in prompt
+        assert "სამართლებრივი საფუძველი" in prompt
+        assert "განმარტება" in prompt
+        assert "პრაქტიკული რჩევა" in prompt
+
+    def test_few_shot_example_present(self):
+        """Prompt contains GOOD/BAD few-shot example pair."""
+        prompt = build_system_prompt(context_chunks=["context"])
+        assert "კარგი პასუხი" in prompt   # GOOD marker
+        assert "არასწორი პასუხი" in prompt  # BAD marker
