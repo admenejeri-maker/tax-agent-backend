@@ -192,6 +192,7 @@ async def answer_question(
             source_refs=source_refs,
             is_red_zone=is_red_zone,
             temporal_year=temporal_year,
+            domain=domain,
             logic_rules=logic_rules,
         )
 

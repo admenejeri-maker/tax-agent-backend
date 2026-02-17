@@ -150,3 +150,32 @@ class TestBuildSystemPrompt:
             logic_rules=rules,
         )
         assert "100,000 ლარი" in prompt
+
+    # ── Domain Focus ──────────────────────────────────────────────────
+
+    def test_domain_injected_for_vat(self):
+        """Non-GENERAL domain renders the სფერო section."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            domain="VAT",
+        )
+        assert "## სფერო: VAT" in prompt
+
+    def test_domain_general_omitted(self):
+        """GENERAL domain does NOT render the სფერო section."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            domain="GENERAL",
+        )
+        assert "სფერო" not in prompt
+
+    def test_domain_before_logic_rules(self):
+        """Domain section appears before logic rules in the prompt."""
+        prompt = build_system_prompt(
+            context_chunks=["context"],
+            domain="INCOME_TAX",
+            logic_rules="RULE_MARKER",
+        )
+        domain_pos = prompt.index("სფერო")
+        rules_pos = prompt.index("ლოგიკის წესები")
+        assert domain_pos < rules_pos

@@ -91,6 +91,7 @@ def build_system_prompt(
     source_refs: Optional[List[dict]] = None,
     is_red_zone: bool = False,
     temporal_year: Optional[int] = None,
+    domain: Optional[str] = None,
     logic_rules: Optional[str] = None,
 ) -> str:
     """Build the full system prompt for Gemini generation.
@@ -101,6 +102,7 @@ def build_system_prompt(
         source_refs: Citation references with id, article_number, title.
         is_red_zone: Whether the query triggers calculation disclaimers.
         temporal_year: Past year detected in query, if any.
+        domain: Tax domain from router (e.g. "VAT", "INCOME_TAX"), or None.
         logic_rules: Pre-loaded CoL reasoning rules from logic_loader, or None.
 
     Returns:
@@ -118,6 +120,10 @@ def build_system_prompt(
             parts.append(
                 "\n\n## ტერმინთა განმარტებები\n" + "\n".join(defn_lines)
             )
+
+    # ── Inject domain focus (framework before evidence)
+    if domain and domain != "GENERAL":
+        parts.append(f"\n\n## სფერო: {domain}")
 
     # ── Inject CoL logic rules (Step 5)
     if logic_rules:
