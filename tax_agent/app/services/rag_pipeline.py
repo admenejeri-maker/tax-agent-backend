@@ -32,6 +32,9 @@ from app.services.tax_system_prompt import (
 from app.services.embedding_service import get_genai_client
 from app.services.query_rewriter import rewrite_query
 from app.services.vector_search import hybrid_search
+from app.services.router import route_query
+from app.services.logic_loader import get_logic_rules
+from app.services.critic import critique_answer
 
 logger = structlog.get_logger(__name__)
 
@@ -83,7 +86,7 @@ def _extract_source_metadata(results: List[dict]) -> List[SourceMetadata]:
         )
         metadata.append(SourceMetadata(
             article_number=r.get("article_number"),
-            chapter=r.get("chapter"),
+            chapter=r.get("kari"),
             title=r.get("title"),
             score=r.get("score", 0.0),
             url=url,
@@ -137,6 +140,21 @@ async def answer_question(
         definitions = await resolve_terms(query)
         temporal_flag, temporal_year = detect_past_date(query)
 
+        # ── Step 1.3: Domain routing (gated) ─────────────────────
+        domain = "GENERAL"
+        if settings.router_enabled:
+            route_result = await route_query(query)
+            domain = route_result.domain
+            logger.info(
+                "router_result",
+                domain=domain,
+                confidence=route_result.confidence,
+                method=route_result.method,
+            )
+
+        # ── Step 1.4: Logic rules (gated via loader) ─────────────
+        logic_rules = get_logic_rules(domain)
+
         # ── Step 1.5: Query rewriting for search (Task 4) ────────
         search_query = query
         if history and len(history) > 1:
@@ -168,6 +186,7 @@ async def answer_question(
             source_refs=source_refs,
             is_red_zone=is_red_zone,
             temporal_year=temporal_year,
+            logic_rules=logic_rules,
         )
 
         # ── Step 4: Gemini generation ─────────────────────────────
@@ -191,6 +210,21 @@ async def answer_question(
 
         answer_text = response.text if hasattr(response, "text") else str(response)
 
+        # ── Step 4.5: Critic QA review (gated) ──────────────────
+        confidence = _calculate_confidence(search_results)
+        if settings.critic_enabled:
+            critic_result = await critique_answer(
+                answer=answer_text,
+                source_refs=source_refs or [],
+                confidence=confidence,
+            )
+            if not critic_result.approved and critic_result.feedback:
+                logger.warning(
+                    "critic_rejected",
+                    feedback=critic_result.feedback,
+                )
+                answer_text += f"\n\n⚠️ {critic_result.feedback}"
+
         # ── Step 5: Assemble response ─────────────────────────────
         source_refs_list = [
             str(r.get("article_number", "unknown"))
@@ -209,7 +243,7 @@ async def answer_question(
             answer=answer_text,
             sources=source_refs_list,
             source_metadata=source_metadata,
-            confidence_score=_calculate_confidence(search_results),
+            confidence_score=confidence,
             disclaimer=disclaimer,
             temporal_warning=temporal_warning,
         )
