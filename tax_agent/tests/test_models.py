@@ -69,7 +69,7 @@ class TestTaxArticleValidation:
             last_amended_date="2024-03-15",
             status=ArticleStatus.AMENDED,
             embedding=embedding,
-            embedding_model="text-embedding-004",
+            embedding_model="gemini-embedding-001",
             embedding_text="კარი I > თავი I > მუხლი 1: Test",
         )
         assert article.related_articles == [2, 3]

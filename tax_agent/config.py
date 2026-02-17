@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _safe_float(env_var: str, default: float) -> float:
+    """Parse float env var with fallback — never crash at import time."""
+    try:
+        return float(os.getenv(env_var, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
 class Settings(BaseModel):
     """Tax Agent application settings with production defaults"""
 
@@ -25,7 +33,7 @@ class Settings(BaseModel):
     # =========================================================================
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     embedding_model: str = Field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     )
 
     # =========================================================================
@@ -64,6 +72,22 @@ class Settings(BaseModel):
     )
     keyword_search_enabled: bool = Field(
         default_factory=lambda: os.getenv("KEYWORD_SEARCH_ENABLED", "true").lower() == "true"
+    )
+
+    # =========================================================================
+    # Feature Flags (Orchestrator) — all default to False for safe rollout
+    # =========================================================================
+    router_enabled: bool = Field(
+        default_factory=lambda: os.getenv("ROUTER_ENABLED", "false").lower() == "true"
+    )
+    logic_rules_enabled: bool = Field(
+        default_factory=lambda: os.getenv("LOGIC_RULES_ENABLED", "false").lower() == "true"
+    )
+    critic_enabled: bool = Field(
+        default_factory=lambda: os.getenv("CRITIC_ENABLED", "false").lower() == "true"
+    )
+    critic_confidence_threshold: float = Field(
+        default_factory=lambda: _safe_float("CRITIC_CONFIDENCE_THRESHOLD", 0.7)
     )
 
     # =========================================================================

@@ -141,7 +141,7 @@ class TestTaxArticleStoreCRUD:
         result = await store.update_embedding(
             article_number=81,
             embedding=[0.1] * 768,
-            embedding_model="text-embedding-004",
+            embedding_model="gemini-embedding-001",
             embedding_text="კარი II > თავი V > მუხლი 81: Test",
         )
 
@@ -286,7 +286,7 @@ class TestDefinitionStoreCRUD:
         result = await store.update_embedding(
             term_ka="გადასახადი",
             embedding=[0.1] * 768,
-            embedding_model="text-embedding-004",
+            embedding_model="gemini-embedding-001",
             embedding_text="გადასახადი: სავალდებულო ფულადი შენატანი",
         )
 

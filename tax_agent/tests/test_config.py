@@ -58,3 +58,48 @@ def test_key_hash_deterministic():
     hash1 = KeyGenerator.hash_key("tk_abc123")
     hash2 = KeyGenerator.hash_key("tk_abc123")
     assert hash1 == hash2
+
+
+# =============================================================================
+# Feature Flag Tests (Step 1)
+# =============================================================================
+
+
+def test_flags_default_false():
+    """All orchestrator flags default to False when env vars not set."""
+    from config import Settings
+
+    s = Settings()
+    assert s.router_enabled is False
+    assert s.logic_rules_enabled is False
+    assert s.critic_enabled is False
+
+
+def test_flags_env_true(monkeypatch):
+    """Flags activate when env vars set to 'true'."""
+    monkeypatch.setenv("ROUTER_ENABLED", "true")
+    monkeypatch.setenv("LOGIC_RULES_ENABLED", "true")
+    monkeypatch.setenv("CRITIC_ENABLED", "true")
+    from config import Settings
+
+    s = Settings()
+    assert s.router_enabled is True
+    assert s.logic_rules_enabled is True
+    assert s.critic_enabled is True
+
+
+def test_critic_threshold_default_07():
+    """Critic confidence threshold defaults to 0.7."""
+    from config import Settings
+
+    s = Settings()
+    assert s.critic_confidence_threshold == 0.7
+
+
+def test_critic_threshold_custom(monkeypatch):
+    """Critic threshold reads custom value from env."""
+    monkeypatch.setenv("CRITIC_CONFIDENCE_THRESHOLD", "0.85")
+    from config import Settings
+
+    s = Settings()
+    assert s.critic_confidence_threshold == 0.85

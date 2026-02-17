@@ -3,7 +3,7 @@ Embedding Service — Vector Embedding Pipeline
 ===============================================
 
 Generates 768-dim vector embeddings for tax articles and definitions
-using Google's text-embedding-004 model, then persists them via CRUD stores.
+using Google's gemini-embedding-001 model, then persists them via CRUD stores.
 
 SDK Compatibility:
     Uses asyncio.to_thread wrapper for sync client.models.embed_content,

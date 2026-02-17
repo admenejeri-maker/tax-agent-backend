@@ -113,7 +113,7 @@ class TestEmbedContent:
         mock_get_client.return_value = mock_client
         mock_to_thread.return_value = make_mock_result(count=1)
 
-        result = await embed_content("test text", model="text-embedding-004")
+        result = await embed_content("test text", model="gemini-embedding-001")
 
         assert len(result) == EXPECTED_DIMENSIONS
         assert all(isinstance(v, float) for v in result)
@@ -129,7 +129,7 @@ class TestEmbedContent:
         mock_to_thread.return_value = make_mock_result(count=1, dims=512)
 
         with pytest.raises(ValueError, match=f"Expected {EXPECTED_DIMENSIONS} dimensions"):
-            await embed_content("test text", model="text-embedding-004")
+            await embed_content("test text", model="gemini-embedding-001")
 
 
 # =============================================================================
@@ -157,7 +157,7 @@ class TestEmbedBatch:
         ]
 
         texts = [f"text_{i}" for i in range(250)]
-        result = await embed_batch(texts, batch_size=100, model="text-embedding-004")
+        result = await embed_batch(texts, batch_size=100, model="gemini-embedding-001")
 
         assert len(result) == 250
         assert mock_to_thread.call_count == 3
@@ -184,7 +184,7 @@ class TestTruncation:
         mock_to_thread.return_value = make_mock_result(count=1)
 
         long_text = "x" * (MAX_EMBEDDING_CHARS + 1000)
-        await embed_content(long_text, model="text-embedding-004")
+        await embed_content(long_text, model="gemini-embedding-001")
 
         # Verify truncation warning was logged
         mock_logger.warning.assert_called_once()

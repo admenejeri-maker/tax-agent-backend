@@ -22,7 +22,7 @@ def mock_settings():
             s.mongodb_uri = "mongodb://test:27017"
             s.database_name = "test_db"
             s.gemini_api_key = "test-key"
-            s.embedding_model = "text-embedding-004"
+            s.embedding_model = "gemini-embedding-001"
             s.matsne_request_delay = 0
         yield seed_settings, sync_settings
 
@@ -157,7 +157,7 @@ async def test_seed_creates_metadata(
     assert set_doc["publication"] == 239
     assert set_doc["articles_count"] == 312
     assert set_doc["definitions_count"] == 45
-    assert set_doc["embedding_model"] == "text-embedding-004"
+    assert set_doc["embedding_model"] == "gemini-embedding-001"
     assert "seeded_at" in set_doc
 
 
