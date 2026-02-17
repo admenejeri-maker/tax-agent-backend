@@ -61,3 +61,9 @@ class TestBuildSystemPrompt:
         """Empty context injects a fallback message."""
         prompt = build_system_prompt(context_chunks=[])
         assert "ინფორმაცია ვერ მოიძებნა" in prompt
+
+    # ── Task 2: Active Disambiguation ────────────────────────────────
+
+    def test_disambiguation_section_present(self):
+        """Disambiguation instruction is part of base system prompt."""
+        assert "დამაზუსტებელი კითხვა" in BASE_SYSTEM_PROMPT
