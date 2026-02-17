@@ -1,29 +1,55 @@
-# Session Handoff — Enterprise Sprint: Task 2 Complete
-**Date**: 2026-02-17 21:18
-**Session ID**: 209d425d-fa2a-4ee3-8fe7-bfb3720e222b
-**Previous Session**: 1b34ab91-d283-413b-b8be-acce888f2ac8 (Frontend compat + QA begin)
+# Active Context — Tax Orchestrator Build (Steps 0–5)
+**Date**: 2026-02-18 02:33
+**Session ID**: 1f21c79a-6e11-4f17-95e2-5cf3bd060109
+**Previous Session**: 209d425d-fa2a-4ee3-8fe7-bfb3720e222b (Task 2 disambiguation)
 
 ---
 
 ## Current Focus
-**Enterprise Sprint — Move 3 (Execution) in progress.** Task 1 (PII Scrubber) deferred after analysis.
-Task 2 (Active Disambiguation) completed via TDD. 5 tasks remain.
+**Tax Orchestrator — Move 3 (Build) in progress.** Steps 0–5 complete. Step 6 (rag_pipeline wiring) is next.
 
-## Completed This Session (Feb 17, Evening)
+## Sprint 2: Tax Orchestrator — Build Status
 
-### Enterprise Sprint Planning (Move 2 Updates)
-- Wrote full enterprise sprint implementation plan (`docs/plans/2026-02-17-enterprise-sprint-implementation-plan.md`)
-- Opus Planning: 18-gap analysis + citation sidebar deep analysis
-- **Task 1 (PII Scrubber) — DEFERRED:** Analysis concluded PII masking is not required for tax Q&A agent. 22 edits across 3 files to remove all PII references from plan.
+| Step | Component | Tests | Status |
+|------|-----------|-------|--------|
+| 0 | Embedding model fix (`gemini-embedding-001`) | 230 | ✅ |
+| 1 | `config.py` — Feature flags | 234 | ✅ |
+| 2 | `router.py` — Tiered domain routing | 240 | ✅ |
+| 3 | `logic_loader.py` — CoL rule loading | 247 | ✅ |
+| 4 | `critic.py` — QA reviewer | 262 | ✅ |
+| 5 | `tax_system_prompt.py` — Logic rules injection | 259 | ✅ |
+| 6 | `rag_pipeline.py` — Wire integration | — | ⏳ NEXT |
+| 7 | Integration tests (34 planned) | — | ⏳ |
+| **Current Suite** | **259 passing** | **0 failures** | |
 
-### Task 2: Active Disambiguation ✅
-- **Mode:** S (2 files, ~10 min)
-- **Claude Building v3.0 simulation:** 6 gaps found (0 Critical), G1 resolved (insertion point)
-- **TDD:** Test written → FAIL → Section added → 7/7 PASS
-- **Two-Stage Review:** Spec ✅ + Quality ✅
-- **Files changed:**
-  - `app/services/tax_system_prompt.py` — +13 lines (disambiguation section)
-  - `tests/test_system_prompt.py` — +4 lines (new test)
+## Completed This Session (Feb 17–18)
+- **Move 1**: Deep Analysis — codebase audit, feasibility report
+- **Move 2**: Strategic Planning — Tree of Thoughts blueprint, MongoDB sync audit
+- **Move 2.5**: Blueprint Simulation — 15 bugs/gaps found, 12 assumptions rated
+- **Step 0**: Embedding model rename (12 replacements, 7 files)
+- **Step 1**: Feature flags (`critic_enabled`, `logic_rules_enabled`, `confidence_threshold`)
+- **Step 2**: Tiered router with 9 domains + fallback
+- **Step 3**: Logic loader with feature-flag gating + caching
+- **Step 4**: Critic QA with confidence gate + fail-open + Gemini API
+- **Step 5**: System prompt extension with `logic_rules` param
+
+## Git State
+- **Branch**: `main` (clean, up to date)
+- **Latest commit**: `9d3ea7c` feat: orchestrator steps 3-5
+- **Previous commit**: `91452ae` feat: orchestrator steps 0-2
+- **Remote**: `admenejeri-maker/tax-agent-backend`
+
+## Simulation Pipeline
+Each step follows: **Simulate → Audit → Build → Verify**
+- Steps 1–5: All simulated with bug/gap/assumption audits before build
+- Step 5 simulation: 2 bugs, 3 gaps, 10 assumptions (avg 8.6/10)
+- Key fix: Removed unused `domain` param from `build_system_prompt`
+
+## Next Steps
+1. 🔴 **Step 6: rag_pipeline.py** — Wire router, logic_loader, critic, logic_rules into pipeline
+2. 🟡 **Step 7: Integration tests** — 34 tests covering full orchestrator flow
+3. 🟢 **Move 4: QA** — Adversarial review of complete orchestrator
+4. 🟢 **Move 5: Debug & Refinement** — Fix any issues found
 
 ## Repositories (Canonical)
 | Component | Repository |
@@ -31,42 +57,5 @@ Task 2 (Active Disambiguation) completed via TDD. 5 tasks remain.
 | **Backend** | [`admenejeri-maker/tax-agent-backend`](https://github.com/admenejeri-maker/tax-agent-backend) |
 | **Frontend** | [`admenejeri-maker/tax-agent-frontend`](https://github.com/admenejeri-maker/tax-agent-frontend) |
 
-## Local Dev Ports (Canonical)
-| Service | Port |
-|---------|------|
-| Tax Agent Backend | `:8000` |
-| Frontend | `:3010` |
-
-## Sprint Progress (Enterprise Plan)
-| Task | Status | Tests |
-|------|--------|-------|
-| ~~Task 1: PII Scrubber~~ | **DEFERRED** | — |
-| Task 2: Disambiguation | ✅ Complete | 7/7 |
-| Task 3: Prompt Upgrade | ⬜ Pending | — |
-| Task 4: Query Rewriter | ⬜ Pending | — |
-| Task 5: Keyword Search | ⬜ Pending | — |
-| Task 7: Citation Backend | ⬜ Pending | — |
-| Task 6: Integration E2E | ⬜ Pending | — |
-
-## Git State
-- **Uncommitted changes:** Task 2 disambiguation + compat layer + fixes from previous session
-- Last commit: `603eb2f` (docs: memory/context update)
-
-## Next Steps (Priority Order)
-1. 🔴 **Task 3: Prompt Upgrade** — M mode, empathic persona + few-shot + 4-step format
-2. 🔴 **Task 4: Query Rewriter** — M mode, new service + pipeline integration
-3. 🔴 **Task 5: Keyword Search** — L mode, Atlas Search + hybrid merge
-4. 🟡 **Task 7: Citation Backend** — M mode, source enrichment
-5. 🟡 **Task 6: Integration E2E** — test-only gate
-6. 🟡 **Commit all sprint tasks** once E2E passes
-7. 🟢 **Deploy to Cloud Run**
-
-## Key Decision Log
-| Decision | Rationale |
-|----------|-----------|
-| PII Scrubber deferred | Not functional req for tax Q&A; simpler alternatives suffice |
-| Disambiguation insertion point | Between instructions & აკრძალულია (G1 resolution) |
-| Task 3 must preserve disambiguation | Noted — full prompt rewrite must keep new section |
-
 ---
-*Handoff created by Antigravity — Enterprise Sprint Session*
+*Context saved by Antigravity — Tax Orchestrator Steps 0–5 Complete*
