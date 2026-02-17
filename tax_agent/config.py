@@ -67,6 +67,19 @@ class Settings(BaseModel):
     )
 
     # =========================================================================
+    # Citation / Grounded UI (Task 7)
+    # =========================================================================
+    citation_enabled: bool = Field(
+        default_factory=lambda: os.getenv("CITATION_ENABLED", "true").lower() == "true"
+    )
+    matsne_base_url: str = Field(
+        default_factory=lambda: os.getenv(
+            "MATSNE_BASE_URL",
+            "https://matsne.gov.ge/ka/document/view/1043717/most-current-version",
+        )
+    )
+
+    # =========================================================================
     # Authentication
     # =========================================================================
     api_key_secret: str = Field(

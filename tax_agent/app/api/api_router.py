@@ -14,8 +14,9 @@ API Router — Task 7
 Rate limited via SlowAPI. Auth via verify_api_key dependency.
 """
 
-import json
 from typing import Any, Dict
+
+from app.utils.sse_helpers import sse_event as _sse_event, chunk_text as _chunk_text
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -57,18 +58,7 @@ def _extract_user_id(key_doc: dict | None) -> str:
     return str(key_doc.get("user_id", key_doc.get("_id", "anonymous")))
 
 
-# ─── SSE Helper ───────────────────────────────────────────────────────────────
-
-def _sse_event(event: str, data: Any) -> str:
-    """Format a Server-Sent Event."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _chunk_text(text: str, chunk_size: int = 80) -> list:
-    """Split text into chunks for simulated streaming."""
-    if not text:
-        return []
-    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+# ─── SSE Helper (imported from app.utils.sse_helpers) ─────────────────────────
 
 
 # =============================================================================
@@ -117,12 +107,14 @@ async def ask_question(
         answer=rag_response.answer,
         sources=[
             SourceDetail(
+                id=i + 1,
                 article_number=s.article_number,
                 chapter=s.chapter,
                 title=s.title,
                 score=s.score,
+                url=s.url,
             )
-            for s in rag_response.source_metadata
+            for i, s in enumerate(rag_response.source_metadata)
         ],
         disclaimer=rag_response.disclaimer,
         temporal_warning=rag_response.temporal_warning,
@@ -177,12 +169,14 @@ async def ask_stream(
             # ── Sources ───────────────────────────────────────────────
             sources_data = [
                 {
+                    "id": i + 1,
                     "article_number": s.article_number,
                     "chapter": s.chapter,
                     "title": s.title,
                     "score": s.score,
+                    "url": s.url,
                 }
-                for s in rag_response.source_metadata
+                for i, s in enumerate(rag_response.source_metadata)
             ]
             yield _sse_event("sources", sources_data)
 

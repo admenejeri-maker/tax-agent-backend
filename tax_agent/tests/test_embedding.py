@@ -38,14 +38,14 @@ def reset_singleton():
     reset_client()
 
 
-def make_mock_embedding(dims: int = 768) -> MagicMock:
+def make_mock_embedding(dims: int = EXPECTED_DIMENSIONS) -> MagicMock:
     """Create a mock embedding result with the given dimensions."""
     mock_emb = MagicMock()
     mock_emb.values = [0.1] * dims
     return mock_emb
 
 
-def make_mock_result(count: int = 1, dims: int = 768) -> MagicMock:
+def make_mock_result(count: int = 1, dims: int = EXPECTED_DIMENSIONS) -> MagicMock:
     """Create a mock API result with `count` embeddings."""
     result = MagicMock()
     result.embeddings = [make_mock_embedding(dims) for _ in range(count)]
@@ -107,15 +107,15 @@ class TestEmbedContent:
     @pytest.mark.asyncio
     @patch("app.services.embedding_service._get_client")
     @patch("app.services.embedding_service.asyncio.to_thread", new_callable=AsyncMock)
-    async def test_returns_768_dims(self, mock_to_thread, mock_get_client):
-        """embed_content should return exactly 768 floats."""
+    async def test_returns_expected_dims(self, mock_to_thread, mock_get_client):
+        """embed_content should return exactly EXPECTED_DIMENSIONS floats."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_to_thread.return_value = make_mock_result(count=1, dims=768)
+        mock_to_thread.return_value = make_mock_result(count=1)
 
         result = await embed_content("test text", model="text-embedding-004")
 
-        assert len(result) == 768
+        assert len(result) == EXPECTED_DIMENSIONS
         assert all(isinstance(v, float) for v in result)
         mock_to_thread.assert_called_once()
 
@@ -123,12 +123,12 @@ class TestEmbedContent:
     @patch("app.services.embedding_service._get_client")
     @patch("app.services.embedding_service.asyncio.to_thread", new_callable=AsyncMock)
     async def test_dimension_mismatch_raises(self, mock_to_thread, mock_get_client):
-        """embed_content should raise ValueError if dims != 768."""
+        """embed_content should raise ValueError if dims != EXPECTED_DIMENSIONS."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_to_thread.return_value = make_mock_result(count=1, dims=512)
 
-        with pytest.raises(ValueError, match="Expected 768 dimensions"):
+        with pytest.raises(ValueError, match=f"Expected {EXPECTED_DIMENSIONS} dimensions"):
             await embed_content("test text", model="text-embedding-004")
 
 
@@ -181,7 +181,7 @@ class TestTruncation:
         """Text > MAX_EMBEDDING_CHARS should be truncated + warning logged."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_to_thread.return_value = make_mock_result(count=1, dims=768)
+        mock_to_thread.return_value = make_mock_result(count=1)
 
         long_text = "x" * (MAX_EMBEDDING_CHARS + 1000)
         await embed_content(long_text, model="text-embedding-004")
@@ -212,7 +212,7 @@ class TestEmbedAndStoreAll:
         """Orchestrator calls update_embedding for each article."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_to_thread.return_value = make_mock_result(count=1, dims=768)
+        mock_to_thread.return_value = make_mock_result(count=1)
 
         # Mock stores
         article_store = AsyncMock()
@@ -243,9 +243,9 @@ class TestEmbedAndStoreAll:
 
         # First call succeeds, second fails, third succeeds
         mock_to_thread.side_effect = [
-            make_mock_result(count=1, dims=768),  # Article 81 OK
+            make_mock_result(count=1),             # Article 81 OK
             Exception("API quota exceeded"),       # Article 82 FAIL
-            make_mock_result(count=1, dims=768),  # Definition OK
+            make_mock_result(count=1),             # Definition OK
         ]
 
         article_store = AsyncMock()

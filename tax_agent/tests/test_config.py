@@ -13,23 +13,23 @@ def test_config_defaults():
     from config import settings
 
     assert settings.database_name == "georgian_tax_db"
-    assert settings.embedding_model == "text-embedding-004"
+    assert settings.embedding_model == "gemini-embedding-001"
     assert settings.similarity_threshold == 0.5
     assert settings.matsne_request_delay == 2.0
     assert settings.search_limit == 5
     assert settings.rate_limit == 30
     assert settings.host == "0.0.0.0"
-    assert settings.port == 8080
-    assert settings.debug is False
+    assert settings.port == 8000
+    assert settings.debug is True
     assert settings.require_api_key is False
     assert settings.api_key_max_per_ip == 10
 
 
 def test_config_allowed_origins_default():
-    """CORS origins default to localhost:3000"""
+    """CORS origins default to localhost:3010"""
     from config import settings
 
-    assert "http://localhost:3000" in settings.allowed_origins
+    assert "http://localhost:3010" in settings.allowed_origins
 
 
 def test_key_prefix():

@@ -15,16 +15,17 @@ The Tax Agent's internal protocol uses different paths and field names.
 This router bridges the gap without modifying either system.
 """
 
-import json
 from typing import Any, Optional
 
+from app.utils.sse_helpers import sse_event as _sse, chunk_text as _chunk_text
+
 import structlog
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.api_key_store import api_key_store
-from app.auth.dependencies import verify_api_key
+from app.auth.dependencies import verify_api_key, verify_ownership
 from app.auth.key_generator import KeyGenerator
 from app.services.conversation_store import conversation_store
 from app.services.rag_pipeline import answer_question
@@ -48,7 +49,7 @@ class FrontendChatRequest(BaseModel):
     """Request body matching the Scoop frontend's sendMessage shape."""
 
     user_id: str = Field(default="anonymous", description="Frontend user ID")
-    message: str = Field(..., min_length=1, max_length=2000, description="User question")
+    message: str = Field(..., min_length=1, max_length=500, description="User question")
     session_id: Optional[str] = Field(None, description="Resume existing conversation")
     save_history: bool = Field(default=True, description="Whether to persist turns")
 
@@ -59,21 +60,7 @@ class FrontendKeyRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=128, description="User ID")
 
 
-# =============================================================================
-# SSE Helpers (frontend-compatible format)
-# =============================================================================
-
-
-def _sse(event: str, data: Any) -> str:
-    """Format a Server-Sent Event matching the frontend's parseSSEEvent expectations."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _chunk_text(text: str, chunk_size: int = 80) -> list[str]:
-    """Split text into chunks for simulated streaming."""
-    if not text:
-        return []
-    return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+# ─── SSE Helpers (imported from app.utils.sse_helpers) ────────────────────────
 
 
 # =============================================================================
@@ -100,7 +87,7 @@ async def frontend_enroll_key(body: FrontendKeyRequest, request: Request):
     ip_key_count = await api_key_store.count_keys_by_ip(ip_address)
     if ip_key_count >= settings.api_key_max_per_ip:
         logger.warning("frontend_key_rate_limit", ip_prefix=ip_address[:8])
-        return {"error": "Too many API keys from this IP"}, 429
+        raise HTTPException(status_code=429, detail="Too many API keys from this IP")
 
     # Generate and store the key
     generated = await api_key_store.create_key(
@@ -123,7 +110,11 @@ async def frontend_enroll_key(body: FrontendKeyRequest, request: Request):
 
 
 @compat_router.post("/api/v1/chat/stream")
-async def frontend_chat_stream(request: Request, body: FrontendChatRequest):
+async def frontend_chat_stream(
+    request: Request,
+    body: FrontendChatRequest,
+    key_doc: Optional[dict] = Depends(verify_api_key),
+):
     """
     SSE endpoint that speaks the Scoop frontend's protocol.
 
@@ -137,7 +128,11 @@ async def frontend_chat_stream(request: Request, body: FrontendChatRequest):
       done      → {session_id: "..."}
       error     → {message: "..."}
     """
-    user_id = body.user_id or "anonymous"
+    # Trust API key for user_id; fall back to body only when auth is optional
+    if key_doc:
+        user_id = str(key_doc.get("user_id", "anonymous"))
+    else:
+        user_id = body.user_id or "anonymous"
 
     async def generate():
         try:
@@ -174,28 +169,7 @@ async def frontend_chat_stream(request: Request, body: FrontendChatRequest):
                 yield _sse("error", {"message": rag_response.error, "code": "LLM_ERROR"})
                 return
 
-            # ── Stream text in chunks ─────────────────────────────────────
-            for chunk in _chunk_text(rag_response.answer, 80):
-                yield _sse("text", {"content": chunk})
-
-            # ── Sources as inline citation (appended as text) ─────────────
-            if rag_response.source_metadata:
-                sources_text = "\n\n---\n📚 **წყაროები:**\n"
-                for s in rag_response.source_metadata:
-                    sources_text += f"- მუხლი {s.article_number}: {s.title}"
-                    if s.chapter:
-                        sources_text += f" (თავი {s.chapter})"
-                    sources_text += "\n"
-                yield _sse("text", {"content": sources_text})
-
-            # ── Disclaimer as text event ──────────────────────────────────
-            if rag_response.disclaimer:
-                disclaimer_text = f"\n\n⚠️ *{rag_response.disclaimer}*"
-                if rag_response.temporal_warning:
-                    disclaimer_text += f"\n⏰ *{rag_response.temporal_warning}*"
-                yield _sse("text", {"content": disclaimer_text})
-
-            # ── Persist turns ─────────────────────────────────────────────
+            # ── Persist turns BEFORE streaming (prevent data loss) ─────
             if body.save_history:
                 await conversation_store.add_turn(
                     conversation_id, user_id, "user", body.message
@@ -203,6 +177,32 @@ async def frontend_chat_stream(request: Request, body: FrontendChatRequest):
                 await conversation_store.add_turn(
                     conversation_id, user_id, "assistant", rag_response.answer
                 )
+
+            # ── Stream text in chunks ─────────────────────────────────────
+            for chunk in _chunk_text(rag_response.answer, 80):
+                yield _sse("text", {"content": chunk})
+
+            # ── Sources event for citation sidebar (Task 7) ────────────
+            if rag_response.source_metadata:
+                sources_data = [
+                    {
+                        "id": i + 1,
+                        "article_number": s.article_number,
+                        "chapter": s.chapter,
+                        "title": s.title,
+                        "score": s.score,
+                        "url": s.url,
+                    }
+                    for i, s in enumerate(rag_response.source_metadata)
+                ]
+                yield _sse("sources", sources_data)
+
+            # ── Disclaimer as text event ──────────────────────────────────
+            if rag_response.disclaimer:
+                disclaimer_text = f"\n\n⚠️ *{rag_response.disclaimer}*"
+                if rag_response.temporal_warning:
+                    disclaimer_text += f"\n⏰ *{rag_response.temporal_warning}*"
+                yield _sse("text", {"content": disclaimer_text})
 
             # ── Done — Frontend expects {session_id: "..."} ──────────────
             yield _sse("done", {"session_id": conversation_id})
@@ -228,7 +228,10 @@ async def frontend_chat_stream(request: Request, body: FrontendChatRequest):
 
 
 @compat_router.get("/api/v1/sessions/{user_id}")
-async def frontend_list_sessions(user_id: str):
+async def frontend_list_sessions(
+    user_id: str,
+    key_doc: Optional[dict] = Depends(verify_ownership),
+):
     """
     List conversations for a user.
 
@@ -293,27 +296,16 @@ async def frontend_load_history(
 @compat_router.delete("/api/v1/user/{user_id}/data")
 async def frontend_delete_user_data(
     user_id: str,
-    key_doc: Optional[dict] = Depends(verify_api_key),
+    key_doc: Optional[dict] = Depends(verify_ownership),
 ):
     """
     Delete all data for a user.
 
     Frontend calls: DELETE /api/v1/user/{userId}/data
     This removes all conversation sessions owned by the user.
-    Requires valid API key matching the user_id (IDOR protection).
+    IDOR protection handled by verify_ownership dependency.
     """
-    # ── IDOR guard: key owner must match target user ──
-    if key_doc:
-        key_user = str(key_doc.get("user_id", ""))
-        if key_user and key_user != user_id:
-            raise HTTPException(status_code=403, detail="Cannot delete another user's data")
-
-    sessions = await conversation_store.list_sessions(user_id, limit=100)
-    deleted_count = 0
-    for s in sessions:
-        result = await conversation_store.clear_session(s["conversation_id"], user_id)
-        if result:
-            deleted_count += 1
+    deleted_count = await conversation_store.delete_user_data(user_id)
 
     logger.info("frontend_user_data_deleted", user_id=user_id[:8], count=deleted_count)
     return {"deleted": deleted_count, "status": "ok"}

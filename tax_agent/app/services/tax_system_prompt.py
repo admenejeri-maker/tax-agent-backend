@@ -88,6 +88,7 @@ def build_system_prompt(
     *,
     context_chunks: List[str],
     definitions: Optional[List[dict]] = None,
+    source_refs: Optional[List[dict]] = None,
     is_red_zone: bool = False,
     temporal_year: Optional[int] = None,
 ) -> str:
@@ -96,6 +97,7 @@ def build_system_prompt(
     Args:
         context_chunks: Retrieved document chunks from vector search.
         definitions: Matched term definitions from the classifier.
+        source_refs: Citation references with id, article_number, title.
         is_red_zone: Whether the query triggers calculation disclaimers.
         temporal_year: Past year detected in query, if any.
 
@@ -123,6 +125,18 @@ def build_system_prompt(
         parts.append(
             "\n\nკონტექსტი: სამწუხაროდ, ამ კითხვაზე შესაბამისი ინფორმაცია "
             "ვერ მოიძებნა საგადასახადო კოდექსში. გთხოვთ, დააზუსტოთ შეკითხვა."
+        )
+
+    # ── Inject citation instruction (Task 7)
+    if source_refs:
+        citation_lines = [
+            f"[{ref['id']}] მუხლი {ref['article_number']}: {ref['title']}"
+            for ref in source_refs
+        ]
+        parts.append(
+            "\n\n## ციტატა (Citation)\n"
+            "პასუხში გამოიყენე [1], [2] ფორმატის ციტატები წყაროების მისათითებლად.\n"
+            "ხელმისაწვდომი წყაროები:\n" + "\n".join(citation_lines)
         )
 
     # ── Add disclaimers

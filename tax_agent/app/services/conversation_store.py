@@ -226,6 +226,24 @@ class ConversationStore:
         )
         return deleted
 
+    async def delete_user_data(self, user_id: str) -> int:
+        """Delete ALL sessions for a user in one atomic operation.
+
+        Args:
+            user_id: User whose data to purge.
+
+        Returns:
+            Number of sessions deleted.
+        """
+        result = await self._collection.delete_many({"user_id": user_id})
+
+        logger.info(
+            "user_data_deleted",
+            user_id=user_id[:8] + "...",
+            deleted_count=result.deleted_count,
+        )
+        return result.deleted_count
+
     # ─── Helpers ──────────────────────────────────────────────────────────
 
     @property

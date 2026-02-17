@@ -72,15 +72,21 @@ def _extract_source_metadata(results: List[dict]) -> List[SourceMetadata]:
         results: Raw search result dicts.
 
     Returns:
-        List of SourceMetadata objects.
+        List of SourceMetadata objects with Matsne deep-link URLs.
     """
     metadata = []
     for r in results:
+        art_num = r.get("article_number")
+        url = (
+            f"{settings.matsne_base_url}#Article_{art_num}"
+            if art_num else None
+        )
         metadata.append(SourceMetadata(
             article_number=r.get("article_number"),
             chapter=r.get("chapter"),
             title=r.get("title"),
             score=r.get("score", 0.0),
+            url=url,
         ))
     return metadata
 
@@ -145,10 +151,21 @@ async def answer_question(
             if r.get("body")
         ]
 
+        # ── Step 2.5: Pre-compute source metadata + citation refs ─
+        source_metadata = _extract_source_metadata(search_results)
+
+        source_refs = None
+        if settings.citation_enabled and source_metadata:
+            source_refs = [
+                {"id": i + 1, "article_number": s.article_number, "title": s.title}
+                for i, s in enumerate(source_metadata)
+            ]
+
         # ── Step 3: Build system prompt ───────────────────────────
         system_prompt = build_system_prompt(
             context_chunks=context_chunks,
             definitions=definitions,
+            source_refs=source_refs,
             is_red_zone=is_red_zone,
             temporal_year=temporal_year,
         )
@@ -175,7 +192,7 @@ async def answer_question(
         answer_text = response.text if hasattr(response, "text") else str(response)
 
         # ── Step 5: Assemble response ─────────────────────────────
-        source_refs = [
+        source_refs_list = [
             str(r.get("article_number", "unknown"))
             for r in search_results
             if r.get("article_number")
@@ -190,8 +207,8 @@ async def answer_question(
 
         return RAGResponse(
             answer=answer_text,
-            sources=source_refs,
-            source_metadata=_extract_source_metadata(search_results),
+            sources=source_refs_list,
+            source_metadata=source_metadata,
             confidence_score=_calculate_confidence(search_results),
             disclaimer=disclaimer,
             temporal_warning=temporal_warning,

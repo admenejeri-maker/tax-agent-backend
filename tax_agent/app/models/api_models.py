@@ -53,10 +53,12 @@ class ClearRequest(BaseModel):
 class SourceDetail(BaseModel):
     """Source metadata in API response (mapped from SourceMetadata)."""
 
+    id: int = 0  # Sequential citation ID (1, 2, 3...)
     article_number: Optional[str] = None
     chapter: Optional[str] = None
     title: Optional[str] = None
     score: float = 0.0
+    url: Optional[str] = None  # Matsne deep-link
 
 
 class AskResponse(BaseModel):

@@ -303,7 +303,7 @@ class TestCORSConfiguration:
             resp = await client.options(
                 "/health",
                 headers={
-                    "Origin": "http://localhost:3000",
+                    "Origin": "http://localhost:3010",
                     "Access-Control-Request-Method": "GET",
                 },
             )

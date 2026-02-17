@@ -18,6 +18,7 @@ class SourceMetadata(BaseModel):
     chapter: Optional[str] = None
     title: Optional[str] = None
     score: float = 0.0
+    url: Optional[str] = None  # Matsne deep-link
 
     @field_validator("article_number", mode="before")
     @classmethod

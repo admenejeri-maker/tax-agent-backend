@@ -78,6 +78,7 @@ def mock_rag_pipeline():
         mock_src.chapter = "XII"
         mock_src.title = "დღგ-ს განაკვეთი"
         mock_src.score = 0.85
+        mock_src.url = "https://matsne.gov.ge/ka/document/view/1043717/most-current-version#Article_169"
         mock_response.source_metadata = [mock_src]
 
         mock_aq.return_value = mock_response
