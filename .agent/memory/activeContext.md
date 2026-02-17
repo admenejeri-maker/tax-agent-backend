@@ -24,7 +24,8 @@ Frontend compat layer built (uncommitted). QA Move 4 started — server restart 
   - `DELETE /api/v1/user/{user_id}/data` → user data deletion
 - Router registered in `main.py` (import + `app.include_router(compat_router)`)
 - Verified: import loads 5 routes successfully
-- `frontend/.env.local` changed to `http://localhost:8000` (gitignored, not in diff)
+- `frontend/.env.local` → `NEXT_PUBLIC_BACKEND_URL=http://localhost:8000` (gitignored, not in diff)
+- `tax_agent/.env` → `ALLOWED_ORIGINS=http://localhost:3010`
 
 ### Other Uncommitted Changes (7 files)
 | File | Change |
@@ -42,11 +43,21 @@ Frontend compat layer built (uncommitted). QA Move 4 started — server restart 
 - Compat endpoint tests: ❌ BLOCKED — server running old code (PID killed, restart needed)
 - Server needs restart with `cd tax_agent && .venv/bin/python -m uvicorn main:app --port 8000 --reload`
 
-## Production State (Canonical)
+## Repositories (Canonical)
+| Component | Repository |
+|-----------|------------|
+| **Backend** | [`admenejeri-maker/tax-agent-backend`](https://github.com/admenejeri-maker/tax-agent-backend) |
+| **Frontend** | [`admenejeri-maker/tax-agent-frontend`](https://github.com/admenejeri-maker/tax-agent-frontend) |
+
+## Local Dev Ports (Canonical)
+| Service | Port |
+|---------|------|
+| Tax Agent Backend | `:8000` |
+| Frontend | `:3010` |
+
+## Production State
 | Service | URL | Status |
 |---------|-----|--------|
-| Backend (Scoop) | `https://backend-ai-1-890364845413.europe-west1.run.app` | ✅ Deployed |
-| Frontend (Scoop) | `https://scoop-frontend-890364845413.europe-west1.run.app` | ✅ Deployed |
 | Tax Agent Backend | NOT YET DEPLOYED | 🟡 Ready for deploy |
 
 ## Atlas Index State
@@ -80,6 +91,8 @@ Frontend compat layer built (uncommitted). QA Move 4 started — server restart 
 |----------|-----------|
 | Compat router (no prefix) | Routes include `/api/v1/...` — matches frontend expectations |
 | `frontend/.env.local` → port 8000 | Direct Tax Agent connection (gitignored, safe) |
+| Frontend port 3010 (not 3000) | Avoids conflict with other services |
+| `ALLOWED_ORIGINS=http://localhost:3010` | CORS must match frontend port |
 | `asyncio.to_thread()` for Gemini | Sync SDK in async FastAPI |
 | Stateless `answer_question(history=)` | Future MongoDB sessions compatible |
 

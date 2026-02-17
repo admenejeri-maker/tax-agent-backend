@@ -75,7 +75,7 @@ class Settings(BaseModel):
     # =========================================================================
     host: str = "0.0.0.0"
     port: int = Field(
-        default_factory=lambda: int(os.getenv("PORT", "8080"))
+        default_factory=lambda: int(os.getenv("PORT", "8000"))
     )
     debug: bool = Field(
         default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true"
@@ -84,7 +84,7 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("RATE_LIMIT", "30"))
     )
     allowed_origins: str = Field(
-        default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+        default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "http://localhost:3010")
     )
 
     class Config:
