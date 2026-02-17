@@ -43,6 +43,12 @@ class Settings(BaseModel):
     max_output_tokens: int = Field(
         default_factory=lambda: int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
     )
+    query_rewrite_model: str = Field(
+        default_factory=lambda: os.getenv("QUERY_REWRITE_MODEL", "gemini-2.0-flash")
+    )
+    query_rewrite_timeout: float = Field(
+        default_factory=lambda: float(os.getenv("QUERY_REWRITE_TIMEOUT", "3.0"))
+    )
 
     # =========================================================================
     # Tax Agent Settings

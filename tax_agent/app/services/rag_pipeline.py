@@ -1,5 +1,5 @@
 """
-RAG Pipeline Orchestrator — Task 6c/6d
+RAG Pipeline Orchestrator — Task 4/6c/6d
 ========================================
 
 Core `answer_question()` function that orchestrates the full RAG flow:
@@ -30,6 +30,7 @@ from app.services.tax_system_prompt import (
     DISCLAIMER_TEMPORAL,
 )
 from app.services.embedding_service import get_genai_client
+from app.services.query_rewriter import rewrite_query
 from app.services.vector_search import hybrid_search
 
 logger = structlog.get_logger(__name__)
@@ -130,8 +131,13 @@ async def answer_question(
         definitions = await resolve_terms(query)
         temporal_flag, temporal_year = detect_past_date(query)
 
+        # ── Step 1.5: Query rewriting for search (Task 4) ────────
+        search_query = query
+        if history and len(history) > 1:
+            search_query = await rewrite_query(query, history)
+
         # ── Step 2: Hybrid search ─────────────────────────────────
-        search_results = await hybrid_search(query)
+        search_results = await hybrid_search(search_query)
 
         context_chunks = [
             r.get("body", "")
