@@ -62,6 +62,9 @@ class Settings(BaseModel):
     search_limit: int = Field(
         default_factory=lambda: int(os.getenv("SEARCH_LIMIT", "5"))
     )
+    keyword_search_enabled: bool = Field(
+        default_factory=lambda: os.getenv("KEYWORD_SEARCH_ENABLED", "true").lower() == "true"
+    )
 
     # =========================================================================
     # Authentication

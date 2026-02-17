@@ -129,15 +129,84 @@ async def search_by_semantic(
     return [r for r in results if r.get("score", 0) >= effective_threshold]
 
 
+# ── Keyword Search ────────────────────────────────────────────────────────────
+
+
+async def search_by_keyword(query: str, limit: int = 5) -> List[dict]:
+    """Atlas Search keyword lookup using the text index.
+
+    Graceful fallback: returns empty list if Atlas Search index
+    doesn't exist or $search fails.
+
+    Args:
+        query: The search query text.
+        limit: Max results (default 5).
+
+    Returns:
+        List of article dicts with 'score' and 'search_type' fields.
+    """
+    try:
+        pipeline = [
+            {
+                "$search": {
+                    "index": "tax_articles_keyword",
+                    "text": {
+                        "query": query,
+                        "path": ["body", "title"],
+                    },
+                }
+            },
+            {"$limit": limit},
+            {
+                "$addFields": {
+                    "score": {"$meta": "searchScore"},
+                    "search_type": "keyword",
+                }
+            },
+            {
+                "$project": {
+                    "article_number": 1,
+                    "kari": 1,
+                    "tavi": 1,
+                    "title": 1,
+                    "body": 1,
+                    "related_articles": 1,
+                    "is_exception": 1,
+                    "score": 1,
+                    "search_type": 1,
+                }
+            },
+        ]
+
+        db = db_manager.db
+        collection = db["tax_articles"]
+        cursor = collection.aggregate(pipeline)
+        results = await cursor.to_list(length=limit)
+
+        for r in results:
+            logger.info(
+                "keyword_result",
+                query_preview=query[:50],
+                article_number=r.get("article_number"),
+                score=r.get("score"),
+            )
+
+        return results
+    except Exception as e:
+        logger.warning("keyword_search_failed", error=str(e))
+        return []  # Graceful fallback
+
+
 # ── Hybrid Search ─────────────────────────────────────────────────────────────
 
 
 async def hybrid_search(query: str) -> List[dict]:
-    """Execute a hybrid search: direct article lookup + semantic search.
+    """Execute a hybrid search: direct lookup + semantic + keyword.
 
-    If the query contains an article number, fetches it directly and
-    supplements with semantic results. Otherwise, falls back to pure
-    semantic search.
+    Three-way merge strategy:
+    - Direct article lookup (score=1.0) if article number detected
+    - Semantic search via vector embeddings
+    - Keyword search via Atlas Search (gated by feature flag)
 
     Args:
         query: The user's search query.
@@ -150,11 +219,13 @@ async def hybrid_search(query: str) -> List[dict]:
         return []
 
     article_num = detect_article_number(query)
+    keyword_enabled = settings.keyword_search_enabled
 
     if article_num:
         store = TaxArticleStore()
         direct = await store.find_by_number(article_num)
         semantic = await search_by_semantic(query, limit=4)
+        keyword = await search_by_keyword(query, limit=3) if keyword_enabled else []
 
         results = []
         if direct:
@@ -163,8 +234,11 @@ async def hybrid_search(query: str) -> List[dict]:
             direct_dict["is_cross_ref"] = False
             results.append(direct_dict)
         results.extend(semantic)
+        results.extend(keyword)
     else:
-        results = await search_by_semantic(query)
+        semantic = await search_by_semantic(query)
+        keyword = await search_by_keyword(query) if keyword_enabled else []
+        results = semantic + keyword
 
     return merge_and_rank(results)
 

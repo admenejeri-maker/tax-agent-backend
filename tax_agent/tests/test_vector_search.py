@@ -1,9 +1,9 @@
 """
 Tests for Vector Search Pipeline — Task 5
 
-12 tests covering: article number detection, semantic search, hybrid search,
-cross-reference enrichment, lex specialis re-ranking, deduplication, and
-error handling.
+16 tests covering: article number detection, semantic search, keyword search,
+hybrid search (3-way merge), cross-reference enrichment, lex specialis
+re-ranking, deduplication, and error handling.
 """
 
 import pytest
@@ -16,6 +16,7 @@ from app.services.vector_search import (
     hybrid_search,
     merge_and_rank,
     rerank_with_exceptions,
+    search_by_keyword,
     search_by_semantic,
 )
 
@@ -81,7 +82,7 @@ async def test_search_by_semantic_scored(mock_db_manager, mock_embed):
 
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-    mock_db_manager.get_database.return_value = mock_db
+    mock_db_manager.db = mock_db
 
     results = await search_by_semantic("income tax rate", threshold=0.7)
 
@@ -116,7 +117,7 @@ async def test_search_by_semantic_threshold(mock_db_manager, mock_embed):
     mock_collection.aggregate = MagicMock(return_value=mock_cursor)
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-    mock_db_manager.get_database.return_value = mock_db
+    mock_db_manager.db = mock_db
 
     results = await search_by_semantic("test", threshold=0.65)
 
@@ -128,10 +129,11 @@ async def test_search_by_semantic_threshold(mock_db_manager, mock_embed):
 
 
 @pytest.mark.asyncio
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
 @patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
 @patch("app.services.vector_search.TaxArticleStore")
-async def test_hybrid_search_direct_lookup(mock_store_cls, mock_semantic):
-    """T6: Query with article number should trigger find_by_number."""
+async def test_hybrid_search_direct_lookup(mock_store_cls, mock_semantic, mock_keyword):
+    """T6: Query with article number should trigger find_by_number + keyword."""
     mock_store = MagicMock()
     mock_store.find_by_number = AsyncMock(return_value={
         "article_number": 81,
@@ -148,6 +150,7 @@ async def test_hybrid_search_direct_lookup(mock_store_cls, mock_semantic):
         {"article_number": 82, "score": 0.75, "kari": "V", "tavi": "XIII",
          "title": "T2", "body": "B2", "related_articles": [], "is_exception": False},
     ]
+    mock_keyword.return_value = []  # No keyword results for this test
 
     results = await hybrid_search("მუხლი 81 საშემოსავლო")
 
@@ -158,17 +161,20 @@ async def test_hybrid_search_direct_lookup(mock_store_cls, mock_semantic):
 
 
 @pytest.mark.asyncio
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
 @patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
-async def test_hybrid_search_semantic_only(mock_semantic):
-    """T7: Query without article number should use semantic search only."""
+async def test_hybrid_search_semantic_only(mock_semantic, mock_keyword):
+    """T7: Query without article number should use semantic + keyword."""
     mock_semantic.return_value = [
         {"article_number": 81, "score": 0.85, "kari": "V", "tavi": "XIII",
          "title": "T", "body": "B", "related_articles": [], "is_exception": False},
     ]
+    mock_keyword.return_value = []  # No keyword results for this test
 
     results = await hybrid_search("income tax rate")
 
     mock_semantic.assert_called_once_with("income tax rate")
+    mock_keyword.assert_called_once()  # Keyword search should also be called
     assert len(results) == 1
     assert results[0]["article_number"] == 81
 
@@ -275,3 +281,128 @@ async def test_search_semantic_embed_failure(mock_embed):
 
     with pytest.raises(SearchError, match="Failed to embed query"):
         await search_by_semantic("test query")
+
+
+# ── T13–T14: Keyword Search ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.db_manager")
+async def test_search_by_keyword_returns_results(mock_db_manager):
+    """T13: Keyword search should return results with score and search_type."""
+    mock_results = [
+        {
+            "article_number": 81,
+            "kari": "V",
+            "tavi": "XIII",
+            "title": "საშემოსავლო გადასახადი",
+            "body": "ფიზიკური პირის მიერ...",
+            "related_articles": [],
+            "is_exception": False,
+            "score": 5.2,
+            "search_type": "keyword",
+        },
+    ]
+
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=mock_results)
+
+    mock_collection = MagicMock()
+    mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+    mock_db_manager.db = mock_db
+
+    results = await search_by_keyword("საშემოსავლო გადასახადი")
+
+    assert len(results) == 1
+    assert results[0]["score"] == 5.2
+    assert results[0]["search_type"] == "keyword"
+    assert results[0]["article_number"] == 81
+
+    # Verify pipeline used correct index and field paths
+    call_args = mock_collection.aggregate.call_args[0][0]
+    assert call_args[0]["$search"]["index"] == "tax_articles_keyword"
+    assert call_args[0]["$search"]["text"]["path"] == ["body", "title"]
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.db_manager")
+async def test_search_by_keyword_graceful_fallback(mock_db_manager):
+    """T14: Keyword search should return [] on exception (graceful fallback)."""
+    mock_db = MagicMock()
+    mock_collection = MagicMock()
+    mock_collection.aggregate = MagicMock(side_effect=Exception("Index not found"))
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+    mock_db_manager.db = mock_db
+
+    results = await search_by_keyword("test query")
+
+    assert results == []
+
+
+# ── T15–T16: Hybrid Search with Keyword Integration ─────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
+@patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
+async def test_hybrid_search_with_keyword_results(mock_semantic, mock_keyword):
+    """T15: Hybrid search should merge semantic + keyword results."""
+    mock_semantic.return_value = [
+        {"article_number": 81, "score": 0.85, "kari": "V", "tavi": "XIII",
+         "title": "T1", "body": "B1", "related_articles": [], "is_exception": False},
+    ]
+    mock_keyword.return_value = [
+        {"article_number": 82, "score": 4.5, "search_type": "keyword",
+         "kari": "V", "tavi": "XIII", "title": "T2", "body": "B2",
+         "related_articles": [], "is_exception": False},
+    ]
+
+    results = await hybrid_search("საშემოსავლო გადასახადი")
+
+    # Both sources contribute results
+    assert len(results) == 2
+    article_numbers = {r["article_number"] for r in results}
+    assert article_numbers == {81, 82}
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.search_by_keyword", new_callable=AsyncMock)
+@patch("app.services.vector_search.search_by_semantic", new_callable=AsyncMock)
+@patch("app.services.vector_search.TaxArticleStore")
+async def test_hybrid_search_direct_plus_keyword(
+    mock_store_cls, mock_semantic, mock_keyword
+):
+    """T16: Direct lookup + semantic + keyword should all merge correctly."""
+    mock_store = MagicMock()
+    mock_store.find_by_number = AsyncMock(return_value={
+        "article_number": 81,
+        "kari": "V",
+        "tavi": "XIII",
+        "title": "საშემოსავლო გადასახადი",
+        "body": "ფიზიკური პირის მიერ...",
+        "related_articles": [],
+        "is_exception": False,
+    })
+    mock_store_cls.return_value = mock_store
+
+    mock_semantic.return_value = [
+        {"article_number": 82, "score": 0.75, "kari": "V", "tavi": "XIII",
+         "title": "T2", "body": "B2", "related_articles": [], "is_exception": False},
+    ]
+    mock_keyword.return_value = [
+        {"article_number": 83, "score": 3.1, "search_type": "keyword",
+         "kari": "V", "tavi": "XIII", "title": "T3", "body": "B3",
+         "related_articles": [], "is_exception": False},
+    ]
+
+    results = await hybrid_search("მუხლი 81 საშემოსავლო")
+
+    # 3-way merge: direct(81) + semantic(82) + keyword(83)
+    assert len(results) == 3
+    # keyword score 3.1 > direct 1.0 > semantic 0.75
+    assert results[0]["article_number"] == 83  # Keyword has highest score
+    article_numbers = {r["article_number"] for r in results}
+    assert article_numbers == {81, 82, 83}
