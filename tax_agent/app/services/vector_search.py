@@ -62,20 +62,41 @@ def detect_article_number(query: str) -> Optional[int]:
     return None
 
 
+# ── Search Filter Builder ─────────────────────────────────────────────────────
+
+
+def _build_search_filter(domain: Optional[str] = None) -> dict:
+    """Build $vectorSearch pre-filter.
+
+    Args:
+        domain: Tax domain from router. If set and not GENERAL,
+                adds domain constraint to filter.
+
+    Returns:
+        Filter dict for $vectorSearch 'filter' parameter.
+    """
+    base = {"status": "active"}
+    if domain and domain != "GENERAL":
+        base["domain"] = {"$in": [domain, "GENERAL"]}
+    return base
+
+
 # ── Semantic Search ───────────────────────────────────────────────────────────
 
 
-async def search_by_semantic(
+async def _do_semantic_search(
     query: str,
-    limit: int | None = None,
-    threshold: float | None = None,
+    limit: int,
+    threshold: float,
+    domain: Optional[str] = None,
 ) -> List[dict]:
-    """Execute a $vectorSearch query against the tax_articles collection.
+    """Internal: execute a single $vectorSearch query.
 
     Args:
         query: The search query text to embed and search.
-        limit: Max results (defaults to settings.search_limit).
-        threshold: Min similarity score (defaults to settings.similarity_threshold).
+        limit: Max results.
+        threshold: Min similarity score.
+        domain: Optional domain for pre-filtering.
 
     Returns:
         List of article dicts with 'score' field, filtered by threshold.
@@ -83,15 +104,14 @@ async def search_by_semantic(
     Raises:
         SearchError: If embedding fails or MongoDB aggregate errors.
     """
-    effective_limit = limit or settings.search_limit
-    effective_threshold = threshold or settings.similarity_threshold
-
     # ── Embed query ──
     try:
         query_vector = await embed_content(query)
     except Exception as e:
         logger.error("embedding_failed", query=query[:50], error=str(e))
         raise SearchError(f"Failed to embed query: {e}") from e
+
+    search_filter = _build_search_filter(domain)
 
     # ── $vectorSearch pipeline ──
     pipeline = [
@@ -101,8 +121,8 @@ async def search_by_semantic(
                 "path": "embedding",
                 "queryVector": query_vector,
                 "numCandidates": 100,
-                "limit": effective_limit,
-                "filter": {"status": "active"},
+                "limit": limit,
+                "filter": search_filter,
             }
         },
         {
@@ -123,7 +143,7 @@ async def search_by_semantic(
         db = db_manager.db
         collection = db["tax_articles"]
         cursor = collection.aggregate(pipeline)
-        results = await cursor.to_list(length=effective_limit)
+        results = await cursor.to_list(length=limit)
     except Exception as e:
         logger.error("vector_search_failed", query=query[:50], error=str(e))
         raise SearchError(f"Vector search failed: {e}") from e
@@ -138,7 +158,48 @@ async def search_by_semantic(
         )
 
     # ── Threshold filter ──
-    return [r for r in results if r.get("score", 0) >= effective_threshold]
+    return [r for r in results if r.get("score", 0) >= threshold]
+
+
+async def search_by_semantic(
+    query: str,
+    limit: int | None = None,
+    threshold: float | None = None,
+    domain: Optional[str] = None,
+) -> List[dict]:
+    """Execute a $vectorSearch query with optional domain filter + fallback.
+
+    Args:
+        query: The search query text to embed and search.
+        limit: Max results (defaults to settings.search_limit).
+        threshold: Min similarity score (defaults to settings.similarity_threshold).
+        domain: Optional tax domain for pre-filtering.
+
+    Returns:
+        List of article dicts with 'score' field, filtered by threshold.
+
+    Raises:
+        SearchError: If embedding fails or MongoDB aggregate errors.
+    """
+    effective_limit = limit or settings.search_limit
+    effective_threshold = threshold or settings.similarity_threshold
+
+    results = await _do_semantic_search(
+        query, effective_limit, effective_threshold, domain=domain,
+    )
+
+    # ── Fallback: if domain filter gives < 2 results, retry without filter ──
+    if domain and domain != "GENERAL" and len(results) < 2:
+        logger.warning(
+            "domain_filter_fallback",
+            domain=domain,
+            results_with_filter=len(results),
+        )
+        results = await _do_semantic_search(
+            query, effective_limit, effective_threshold, domain=None,
+        )
+
+    return results
 
 
 # ── Keyword Search ────────────────────────────────────────────────────────────
@@ -224,16 +285,20 @@ async def _noop() -> list:
 # ── Hybrid Search ─────────────────────────────────────────────────────────────
 
 
-async def hybrid_search(query: str) -> List[dict]:
+async def hybrid_search(
+    query: str,
+    domain: Optional[str] = None,
+) -> List[dict]:
     """Execute a hybrid search: direct lookup + semantic + keyword.
 
     Three-way merge strategy:
     - Direct article lookup (score=1.0) if article number detected
-    - Semantic search via vector embeddings
+    - Semantic search via vector embeddings (domain-filtered)
     - Keyword search via Atlas Search (gated by feature flag)
 
     Args:
         query: The user's search query.
+        domain: Optional tax domain for semantic search pre-filtering.
 
     Returns:
         Merged, deduplicated, and ranked list of article dicts.
@@ -249,7 +314,7 @@ async def hybrid_search(query: str) -> List[dict]:
         store = TaxArticleStore()
         # Run all three searches concurrently (F3)
         direct_coro = store.find_by_number(article_num)
-        semantic_coro = search_by_semantic(query, limit=4)
+        semantic_coro = search_by_semantic(query, limit=4, domain=domain)
         keyword_coro = search_by_keyword(query, limit=3) if keyword_enabled else _noop()
 
         gather_results = await asyncio.gather(
@@ -277,7 +342,7 @@ async def hybrid_search(query: str) -> List[dict]:
         results.extend(keyword)
     else:
         # Run semantic + keyword concurrently (F3)
-        semantic_coro = search_by_semantic(query)
+        semantic_coro = search_by_semantic(query, domain=domain)
         keyword_coro = search_by_keyword(query) if keyword_enabled else _noop()
 
         gather_results = await asyncio.gather(

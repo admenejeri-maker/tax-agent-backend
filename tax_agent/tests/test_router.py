@@ -146,8 +146,8 @@ async def test_route_admin_penalty():
         ("საშემოსავლო გადასახადი ჯარიმა", "GENERAL", 0.5),
         # VAT(1) + Customs(2) → Customs wins
         ("დღგ საბაჟო იმპორტი", "CUSTOMS", 0.8),
-        # Micro + Corporate tie → GENERAL
-        ("მიკრობიზნესის მოგების გადასახადი", "GENERAL", 0.5),
+        # Micro(2) > Corporate(1) → MICRO_BUSINESS wins
+        ("მიკრობიზნესის მოგების გადასახადი", "MICRO_BUSINESS", 0.8),
     ],
 )
 async def test_multi_domain_stress(
@@ -158,3 +158,55 @@ async def test_multi_domain_stress(
     assert result.domain == expected_domain
     assert result.confidence == expected_confidence
     assert result.method == "keyword"
+
+
+# ─── Compound Rule Tests (Tier 0) ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "query, expected_domain, expected_confidence",
+    [
+        # Rule 1: LLC/company + loan → CORPORATE_TAX (0.95)
+        ("შპს-მ სესხი გასცა დირექტორს", "CORPORATE_TAX", 0.95),
+        # Rule 1 variant: partner loan
+        ("პარტნიორზე გაცემული სესხი", "CORPORATE_TAX", 0.95),
+        # Rule 2: individual + loan → INDIVIDUAL_INCOME (0.9)
+        ("ფიზიკურმა პირმა სესხი აიღო ბანკიდან", "INDIVIDUAL_INCOME", 0.9),
+        # Rule 3: salary + net → INDIVIDUAL_INCOME (0.95)
+        ("2000 ხელზე რამდენი ხელფასია?", "INDIVIDUAL_INCOME", 0.95),
+        # Rule 4: net ONLY (no salary keyword) → INDIVIDUAL_INCOME (0.7)
+        ("ხელზე რამდენი დამრჩება ქირიდან", "INDIVIDUAL_INCOME", 0.7),
+        # Rule 2 variant: bank loan for individual
+        ("სესხი ბანკიდან", "INDIVIDUAL_INCOME", 0.9),
+    ],
+)
+async def test_compound_rule_routing(
+    query: str, expected_domain: str, expected_confidence: float
+):
+    """Compound rules (Tier 0) route correctly before keyword matching."""
+    result = await route_query(query)
+    assert result.domain == expected_domain
+    assert result.confidence == expected_confidence
+    assert result.method == "compound"
+
+
+async def test_compound_priority_over_keyword():
+    """Compound match (Tier 0) takes priority over keyword match (Tier 1).
+
+    'სესხი' + 'შპს' triggers compound rule → CORPORATE_TAX even though
+    'მოგების გადასახადი' would trigger CORPORATE_TAX via keyword too.
+    Method should be 'compound', not 'keyword'.
+    """
+    result = await route_query("შპს-ს სესხი და მოგების გადასახადი")
+    assert result.domain == "CORPORATE_TAX"
+    assert result.method == "compound"
+    assert result.confidence == 0.95
+
+
+async def test_no_compound_match_falls_through():
+    """Query with no compound match falls through to keyword (Tier 1)."""
+    result = await route_query("მოგების გადასახადის განაკვეთი")
+    assert result.domain == "CORPORATE_TAX"
+    assert result.method == "keyword"
+    assert result.confidence == 1.0
+

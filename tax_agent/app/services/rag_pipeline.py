@@ -170,7 +170,7 @@ async def answer_question(
             search_query = await rewrite_query(query, history)
 
         # ── Step 2: Hybrid search ─────────────────────────────────
-        search_results = await hybrid_search(search_query)
+        search_results = await hybrid_search(search_query, domain=domain)
 
         context_chunks = [
             r.get("body", "")

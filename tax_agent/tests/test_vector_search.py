@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.vector_search import (
     SearchError,
     _MAX_ARTICLE_NUMBER,
+    _build_search_filter,
     _noop,
     _rrf_score,
     detect_article_number,
@@ -176,7 +177,7 @@ async def test_hybrid_search_semantic_only(mock_semantic, mock_keyword):
 
     results = await hybrid_search("income tax rate")
 
-    mock_semantic.assert_called_once_with("income tax rate")
+    mock_semantic.assert_called_once_with("income tax rate", domain=None)
     mock_keyword.assert_called_once()  # Keyword search should also be called
     assert len(results) == 1
     assert results[0]["article_number"] == 81
@@ -516,3 +517,53 @@ async def test_hybrid_direct_tagged_as_direct(mock_store_cls, mock_semantic, moc
     assert len(results) == 1
     assert results[0]["search_type"] == "direct"
     assert results[0]["score"] == 1.0
+
+
+# ── Domain Filter & Fallback Tests ────────────────────────────────────────────
+
+
+def test_build_search_filter_no_domain():
+    """_build_search_filter with no domain returns only status:active."""
+    result = _build_search_filter()
+    assert result == {"status": "active"}
+
+
+def test_build_search_filter_general_domain():
+    """_build_search_filter with GENERAL domain returns only status:active."""
+    result = _build_search_filter(domain="GENERAL")
+    assert result == {"status": "active"}
+
+
+def test_build_search_filter_specific_domain():
+    """_build_search_filter with specific domain includes $in filter."""
+    result = _build_search_filter(domain="VAT")
+    assert result == {"status": "active", "domain": {"$in": ["VAT", "GENERAL"]}}
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search._do_semantic_search", new_callable=AsyncMock)
+async def test_semantic_search_domain_fallback(mock_do_search):
+    """search_by_semantic retries without domain when filtered results < 2.
+
+    First call (with domain) returns 1 result → triggers fallback.
+    Second call (without domain) returns 3 results.
+    """
+    # 1 result with domain filter → triggers fallback
+    mock_do_search.side_effect = [
+        [{"article_number": 99, "score": 0.85}],         # domain-filtered: 1 result
+        [
+            {"article_number": 99, "score": 0.85},
+            {"article_number": 100, "score": 0.80},
+            {"article_number": 101, "score": 0.75},
+        ],  # unfiltered: 3 results
+    ]
+
+    results = await search_by_semantic("test query", domain="CORPORATE_TAX")
+
+    # Should have fallen back and returned 3 results
+    assert len(results) == 3
+    assert mock_do_search.call_count == 2
+    # First call: with domain
+    assert mock_do_search.call_args_list[0].kwargs["domain"] == "CORPORATE_TAX"
+    # Second call: without domain
+    assert mock_do_search.call_args_list[1].kwargs["domain"] is None

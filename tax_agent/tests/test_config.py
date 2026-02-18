@@ -65,8 +65,11 @@ def test_key_hash_deterministic():
 # =============================================================================
 
 
-def test_flags_default_false():
+def test_flags_default_false(monkeypatch):
     """All orchestrator flags default to False when env vars not set."""
+    monkeypatch.delenv("ROUTER_ENABLED", raising=False)
+    monkeypatch.delenv("LOGIC_RULES_ENABLED", raising=False)
+    monkeypatch.delenv("CRITIC_ENABLED", raising=False)
     from config import Settings
 
     s = Settings()

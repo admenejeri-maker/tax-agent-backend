@@ -62,7 +62,8 @@ def test_missing_domain_returns_none(monkeypatch, logic_dir):
 def test_loader_disabled_returns_none(monkeypatch, logic_dir):
     """Flag off → returns None without touching filesystem."""
     monkeypatch.setattr(logic_loader, "LOGIC_DIR", logic_dir)
-    # Flag defaults to false — don't set LOGIC_RULES_ENABLED
+    # Explicitly remove flag to test default (false) behavior
+    monkeypatch.delenv("LOGIC_RULES_ENABLED", raising=False)
     from config import Settings
     monkeypatch.setattr(logic_loader, "settings", Settings())
 
@@ -138,3 +139,22 @@ def test_missing_file_not_cached(monkeypatch, logic_dir):
     result = get_logic_rules("NONEXISTENT")
     assert result is None
     assert "NONEXISTENT" not in logic_loader._cache
+
+
+# ─── Phase 2.5: MICRO_BUSINESS domain loading ──────────────────────────────
+
+
+def test_micro_business_domain_loads(monkeypatch, tmp_path):
+    """MICRO_BUSINESS domain resolves to micro_business_rules.md (underscore convention)."""
+    monkeypatch.setattr(logic_loader, "LOGIC_DIR", tmp_path)
+    monkeypatch.setenv("LOGIC_RULES_ENABLED", "true")
+    from config import Settings
+    monkeypatch.setattr(logic_loader, "settings", Settings())
+
+    rules_file = tmp_path / "micro_business_rules.md"
+    rules_file.write_text("## მცირე ბიზნესის წესები\n1% rate.", encoding="utf-8")
+
+    result = get_logic_rules("MICRO_BUSINESS")
+    assert result is not None
+    assert "მცირე ბიზნესის" in result
+    assert "1%" in result
