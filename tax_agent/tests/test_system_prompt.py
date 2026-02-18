@@ -109,7 +109,7 @@ class TestBuildSystemPrompt:
         """Instructions section with citation and brevity rules is present."""
         prompt = build_system_prompt(context_chunks=["context"])
         assert "## ინსტრუქციები" in prompt
-        assert "ციტატას" in prompt  # citation requirement
+        assert "ციტატით" in prompt  # citation requirement
 
     # ── Step 5: CoL Logic Rules ───────────────────────────────────
 
@@ -179,3 +179,26 @@ class TestBuildSystemPrompt:
         domain_pos = prompt.index("სფერო")
         rules_pos = prompt.index("ლოგიკის წესები")
         assert domain_pos < rules_pos
+
+    # ── Citation Format Regression Guard ──────────────────────────────
+
+    def test_few_shot_citation_inline_and_footer(self):
+        """Few-Shot ✅ uses [N] inline + 'წყარო: [N] მუხლი' at bottom."""
+        good_section = BASE_SYSTEM_PROMPT.split("ასე კი")[1]
+        assert "[1]" in good_section
+        assert "[2]" in good_section
+        footer = good_section.split("წყარო:")[1]
+        assert "მუხლი" in footer
+
+    def test_instructions_use_bracket_n_format(self):
+        """Instructions require [N] citation markers, not 'მუხლის ნომერი'."""
+        assert "[N]" in BASE_SYSTEM_PROMPT
+        assert "მუხლის ნომერი" not in BASE_SYSTEM_PROMPT
+
+    def test_citation_injection_has_footer_template(self):
+        """Citation injection section includes bottom format template."""
+        refs = [{"id": 1, "article_number": "89", "title": "T"}]
+        prompt = build_system_prompt(context_chunks=["c"], source_refs=refs)
+        citation_section = prompt.split("ციტატა")[1]
+        assert "წყარო:" in citation_section
+        assert "მუხლი" in citation_section
