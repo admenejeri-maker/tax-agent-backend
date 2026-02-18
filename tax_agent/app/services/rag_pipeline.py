@@ -36,6 +36,11 @@ from app.services.vector_search import hybrid_search
 from app.services.router import route_query
 from app.services.logic_loader import get_logic_rules
 from app.services.critic import critique_answer
+from app.services.safety import (
+    build_generation_config,
+    check_safety_block,
+    SAFETY_FALLBACK_MESSAGE,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -217,18 +222,60 @@ async def answer_question(
             max_turns=settings.max_history_turns,
         )
 
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=settings.generation_model,
-            contents=contents,
-            config={
-                "system_instruction": system_prompt,
-                "temperature": settings.temperature,
-                "max_output_tokens": settings.max_output_tokens,
-            },
-        )
+        # 3-attempt safety fallback: primary → relaxed → backup model
+        attempts = [
+            (settings.generation_model, "primary"),
+            (settings.generation_model, "fallback"),
+            (settings.safety_fallback_model, "primary"),
+        ]
 
-        answer_text = response.text if hasattr(response, "text") else str(response)
+        answer_text = SAFETY_FALLBACK_MESSAGE
+        safety_fallback = False
+
+        for attempt_num, (model, safety_level) in enumerate(attempts, 1):
+            if attempt_num > 1 and not settings.safety_retry_enabled:
+                break
+            try:
+                gen_config = build_generation_config(
+                    system_prompt, settings.temperature,
+                    settings.max_output_tokens, safety_level=safety_level,
+                )
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model,
+                    contents=contents,
+                    config=gen_config,
+                )
+                is_blocked, block_reason, text = check_safety_block(response)
+            except Exception as e:
+                logger.warning(
+                    "safety_attempt_exception",
+                    attempt=attempt_num, model=model, error=str(e),
+                )
+                continue
+
+            if not is_blocked:
+                answer_text = text
+                safety_fallback = attempt_num > 1
+                logger.info(
+                    "generation_success",
+                    attempt=attempt_num, model=model,
+                    finish_reason=block_reason,
+                    answer_len=len(text),
+                )
+                if safety_fallback:
+                    logger.info(
+                        "safety_retry_succeeded",
+                        attempt=attempt_num, model=model,
+                    )
+                break
+
+            logger.warning(
+                "safety_block_detected",
+                attempt=attempt_num, model=model, reason=block_reason,
+            )
+        else:
+            logger.error("all_safety_attempts_failed")
 
         # ── Step 4.5: Critic QA review (gated) ──────────────────
         confidence = _calculate_confidence(search_results)
@@ -245,15 +292,17 @@ async def answer_question(
                         f"\n\n<CRITIC_FEEDBACK>\n{critic_result.feedback}\n</CRITIC_FEEDBACK>"
                         "\nFix the issues above and regenerate your answer."
                     )
+                    regen_config = build_generation_config(
+                        system_prompt + regen_instruction,
+                        settings.temperature,
+                        settings.max_output_tokens,
+                        safety_level="primary",
+                    )
                     regen_response = await asyncio.to_thread(
                         client.models.generate_content,
                         model=settings.generation_model,
                         contents=contents,
-                        config={
-                            "system_instruction": system_prompt + regen_instruction,
-                            "temperature": settings.temperature,
-                            "max_output_tokens": settings.max_output_tokens,
-                        },
+                        config=regen_config,
                     )
                     regen_text = (
                         regen_response.text
@@ -301,6 +350,7 @@ async def answer_question(
             confidence_score=confidence,
             disclaimer=disclaimer,
             temporal_warning=temporal_warning,
+            safety_fallback=safety_fallback,
         )
 
     except Exception as e:

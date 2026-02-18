@@ -151,7 +151,7 @@ class TestAnswerQuestion:
 
     @pytest.mark.asyncio
     async def test_gemini_failure_returns_error(self):
-        """Gemini API failure returns RAGResponse with error field."""
+        """Gemini API failure across all retry attempts returns safety fallback message."""
         with (
             patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
             patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
@@ -167,8 +167,9 @@ class TestAnswerQuestion:
             result = await answer_question("test question")
 
             assert isinstance(result, RAGResponse)
-            assert result.error is not None
-            assert "Gemini API timeout" in result.error
+            # Retry loop absorbs exceptions; fallback message is returned
+            from app.services.safety import SAFETY_FALLBACK_MESSAGE
+            assert result.answer == SAFETY_FALLBACK_MESSAGE
 
     @pytest.mark.asyncio
     async def test_red_zone_adds_disclaimer(self):

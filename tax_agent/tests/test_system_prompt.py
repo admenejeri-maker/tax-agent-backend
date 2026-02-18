@@ -86,18 +86,18 @@ class TestBuildSystemPrompt:
         assert "კონსულტანტი" in prompt  # NEW word, not in old prompt
 
     def test_response_format_four_steps(self):
-        """Prompt contains the 4-step structured response format."""
+        """Prompt contains the 4-step thinking framework."""
         prompt = build_system_prompt(context_chunks=["context"])
-        assert "მოკლე პასუხი" in prompt
-        assert "სამართლებრივი საფუძველი" in prompt
-        assert "განმარტება" in prompt
-        assert "პრაქტიკული რჩევა" in prompt
+        assert "პირდაპირი პასუხი" in prompt
+        assert "ახსნა" in prompt
+        assert "მაგალითი" in prompt
+        assert "მოქმედება" in prompt
 
     def test_few_shot_example_present(self):
-        """Prompt contains GOOD/BAD few-shot example pair."""
+        """Prompt contains contrast-style few-shot example pair."""
         prompt = build_system_prompt(context_chunks=["context"])
-        assert "კარგი პასუხი" in prompt   # GOOD marker
-        assert "არასწორი პასუხი" in prompt  # BAD marker
+        assert "ასე არა" in prompt    # BAD marker
+        assert "ასე კი" in prompt     # GOOD marker
 
     # ── QA Move 5: Hardening ──────────────────────────────────────────
 

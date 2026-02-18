@@ -43,3 +43,4 @@ class RAGResponse(BaseModel):
     disclaimer: Optional[str] = None
     temporal_warning: Optional[str] = None
     error: Optional[str] = None
+    safety_fallback: bool = False  # True if response used relaxed safety / backup model

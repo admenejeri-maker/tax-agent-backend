@@ -16,6 +16,7 @@ import structlog
 
 from config import settings
 from app.services.embedding_service import get_genai_client
+from app.services.safety import build_generation_config
 
 logger = structlog.get_logger(__name__)
 
@@ -87,10 +88,12 @@ async def rewrite_query(
                 client.models.generate_content,
                 model=settings.query_rewrite_model,
                 contents=prompt,
-                config={
-                    "temperature": 0.1,
-                    "max_output_tokens": 256,
-                },
+                config=build_generation_config(
+                    system_prompt="",
+                    temperature=0.1,
+                    max_output_tokens=256,
+                    safety_level="primary",
+                ),
             ),
             timeout=settings.query_rewrite_timeout,
         )

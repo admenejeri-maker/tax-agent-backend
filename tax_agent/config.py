@@ -40,7 +40,7 @@ class Settings(BaseModel):
     # LLM Generation (RAG Pipeline)
     # =========================================================================
     generation_model: str = Field(
-        default_factory=lambda: os.getenv("GEMINI_GENERATION_MODEL", "gemini-2.0-flash")
+        default_factory=lambda: os.getenv("GEMINI_GENERATION_MODEL", "gemini-3-flash-preview")
     )
     temperature: float = Field(
         default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.2"))
@@ -49,10 +49,10 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("MAX_HISTORY_TURNS", "5"))
     )
     max_output_tokens: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
+        default_factory=lambda: int(os.getenv("MAX_OUTPUT_TOKENS", "8192"))
     )
     query_rewrite_model: str = Field(
-        default_factory=lambda: os.getenv("QUERY_REWRITE_MODEL", "gemini-2.0-flash")
+        default_factory=lambda: os.getenv("QUERY_REWRITE_MODEL", "gemini-3-flash-preview")
     )
     query_rewrite_timeout: float = Field(
         default_factory=lambda: float(os.getenv("QUERY_REWRITE_TIMEOUT", "3.0"))
@@ -91,6 +91,16 @@ class Settings(BaseModel):
     )
     critic_regeneration_enabled: bool = Field(
         default_factory=lambda: os.getenv("CRITIC_REGENERATION_ENABLED", "false").lower() == "true"
+    )
+
+    # =========================================================================
+    # Safety & Truncation Defense
+    # =========================================================================
+    safety_retry_enabled: bool = Field(
+        default_factory=lambda: os.getenv("SAFETY_RETRY_ENABLED", "true").lower() == "true"
+    )
+    safety_fallback_model: str = Field(
+        default_factory=lambda: os.getenv("SAFETY_FALLBACK_MODEL", "gemini-2.5-flash")
     )
 
     # =========================================================================
