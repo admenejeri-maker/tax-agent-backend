@@ -113,6 +113,7 @@ async def ask_question(
                 title=s.title,
                 score=s.score,
                 url=s.url,
+                text=s.text,
             )
             for i, s in enumerate(rag_response.source_metadata)
         ],
@@ -175,6 +176,7 @@ async def ask_stream(
                     "title": s.title,
                     "score": s.score,
                     "url": s.url,
+                    "text": s.text,
                 }
                 for i, s in enumerate(rag_response.source_metadata)
             ]

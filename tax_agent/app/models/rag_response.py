@@ -19,6 +19,7 @@ class SourceMetadata(BaseModel):
     title: Optional[str] = None
     score: float = 0.0
     url: Optional[str] = None  # Matsne deep-link
+    text: Optional[str] = None  # Source chunk body (truncated to 2000 chars)
 
     @field_validator("article_number", mode="before")
     @classmethod

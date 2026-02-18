@@ -77,6 +77,9 @@ def _build_contents(
     return contents
 
 
+MAX_SOURCE_TEXT_LEN = 2000
+
+
 def _extract_source_metadata(results: List[dict]) -> List[SourceMetadata]:
     """Extract SourceMetadata from hybrid search results.
 
@@ -93,12 +96,19 @@ def _extract_source_metadata(results: List[dict]) -> List[SourceMetadata]:
             f"{settings.matsne_base_url}#Article_{art_num}"
             if art_num else None
         )
+        body = r.get("body", "")
+        truncated = (
+            body[:MAX_SOURCE_TEXT_LEN] + "…"
+            if len(body) > MAX_SOURCE_TEXT_LEN
+            else body
+        )
         metadata.append(SourceMetadata(
             article_number=r.get("article_number"),
             chapter=r.get("kari"),
             title=r.get("title"),
             score=r.get("score", 0.0),
             url=url,
+            text=truncated or None,
         ))
     return metadata
 

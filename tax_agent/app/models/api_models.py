@@ -59,6 +59,7 @@ class SourceDetail(BaseModel):
     title: Optional[str] = None
     score: float = 0.0
     url: Optional[str] = None  # Matsne deep-link
+    text: Optional[str] = None  # Source chunk body
 
 
 class AskResponse(BaseModel):

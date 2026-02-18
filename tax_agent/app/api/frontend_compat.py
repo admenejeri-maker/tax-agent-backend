@@ -192,6 +192,7 @@ async def frontend_chat_stream(
                         "title": s.title,
                         "score": s.score,
                         "url": s.url,
+                        "text": s.text,
                     }
                     for i, s in enumerate(rag_response.source_metadata)
                 ]
