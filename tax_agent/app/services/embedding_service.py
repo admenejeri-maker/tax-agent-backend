@@ -2,7 +2,7 @@
 Embedding Service — Vector Embedding Pipeline
 ===============================================
 
-Generates 768-dim vector embeddings for tax articles and definitions
+Generates 3072-dim vector embeddings for tax articles and definitions
 using Google's gemini-embedding-001 model, then persists them via CRUD stores.
 
 SDK Compatibility:
@@ -142,10 +142,10 @@ async def embed_content(text: str, model: Optional[str] = None) -> List[float]:
         model: Embedding model name (defaults to settings.embedding_model).
 
     Returns:
-        List of 768 floats.
+        List of 3072 floats.
 
     Raises:
-        ValueError: If embedding dimensions != 768.
+        ValueError: If embedding dimensions != 3072.
     """
     from config import settings
 
@@ -186,7 +186,7 @@ async def embed_batch(
         model: Embedding model name.
 
     Returns:
-        List of embeddings (each 768 floats), same order as input texts.
+        List of embeddings (each 3072 floats), same order as input texts.
     """
     from config import settings
 

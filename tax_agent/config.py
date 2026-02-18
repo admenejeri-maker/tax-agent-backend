@@ -89,6 +89,9 @@ class Settings(BaseModel):
     critic_confidence_threshold: float = Field(
         default_factory=lambda: _safe_float("CRITIC_CONFIDENCE_THRESHOLD", 0.7)
     )
+    critic_regeneration_enabled: bool = Field(
+        default_factory=lambda: os.getenv("CRITIC_REGENERATION_ENABLED", "false").lower() == "true"
+    )
 
     # =========================================================================
     # Citation / Grounded UI (Task 7)

@@ -39,6 +39,9 @@ from app.services.critic import critique_answer
 
 logger = structlog.get_logger(__name__)
 
+# Georgian disclaimer when critic rejects and regen is disabled/fails
+DISCLAIMER_CRITIC = "პასუხი შეიძლება არ იყოს სრულად ზუსტი."
+
 
 def _sanitize_for_log(text: str, max_len: int = 50) -> str:
     """Strip potential PII (digit sequences 5+) from log text."""
@@ -219,21 +222,53 @@ async def answer_question(
 
         # ── Step 4.5: Critic QA review (gated) ──────────────────
         confidence = _calculate_confidence(search_results)
-        if settings.critic_enabled:
-            if not source_refs:
-                logger.debug("critic_skipped_no_sources")
-            else:
-                critic_result = await critique_answer(
-                    answer=answer_text,
-                    source_refs=source_refs,
-                    confidence=confidence,
-                )
-                if not critic_result.approved and critic_result.feedback:
+        if settings.critic_enabled and source_refs:
+            critic_result = await critique_answer(
+                answer=answer_text,
+                source_refs=source_refs,
+                confidence=confidence,
+            )
+            if not critic_result.approved and critic_result.feedback:
+                if settings.critic_regeneration_enabled:
+                    # Single retry: inject feedback into system prompt
+                    regen_instruction = (
+                        f"\n\n<CRITIC_FEEDBACK>\n{critic_result.feedback}\n</CRITIC_FEEDBACK>"
+                        "\nFix the issues above and regenerate your answer."
+                    )
+                    regen_response = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model=settings.generation_model,
+                        contents=contents,
+                        config={
+                            "system_instruction": system_prompt + regen_instruction,
+                            "temperature": settings.temperature,
+                            "max_output_tokens": settings.max_output_tokens,
+                        },
+                    )
+                    regen_text = (
+                        regen_response.text
+                        if hasattr(regen_response, "text")
+                        else str(regen_response)
+                    )
+                    regen_critic = await critique_answer(
+                        answer=regen_text,
+                        source_refs=source_refs,
+                        confidence=confidence,
+                    )
+                    if regen_critic.approved:
+                        answer_text = regen_text
+                        logger.info("critic_regen_accepted")
+                    else:
+                        answer_text += f"\n\n{DISCLAIMER_CRITIC}"
+                        logger.warning("critic_regen_also_rejected")
+                else:
+                    answer_text += f"\n\n{DISCLAIMER_CRITIC}"
                     logger.warning(
-                        "critic_rejected",
+                        "critic_rejected_no_regen",
                         feedback=critic_result.feedback,
                     )
-                    answer_text += f"\n\n⚠️ {critic_result.feedback}"
+        elif settings.critic_enabled and not source_refs:
+            logger.debug("critic_skipped_no_sources")
 
         # ── Step 5: Assemble response ─────────────────────────────
         source_refs_list = [

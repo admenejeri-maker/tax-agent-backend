@@ -367,8 +367,8 @@ class TestCriticWiring:
             assert "⚠️" not in result.answer
 
     @pytest.mark.asyncio
-    async def test_critic_rejected_appends_warning(self):
-        """Rejected critic result appends warning to answer."""
+    async def test_critic_rejected_appends_disclaimer(self):
+        """Rejected critic result appends Georgian disclaimer (regen disabled)."""
         with (
             patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
             patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
@@ -380,6 +380,7 @@ class TestCriticWiring:
         ):
             mock_settings.router_enabled = False
             mock_settings.critic_enabled = True
+            mock_settings.critic_regeneration_enabled = False
             mock_settings.citation_enabled = True
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
@@ -400,8 +401,131 @@ class TestCriticWiring:
 
             result = await answer_question("test")
 
-            assert "⚠️" in result.answer
-            assert "Answer lacks source citations." in result.answer
+            assert "პასუხი შეიძლება არ იყოს სრულად ზუსტი" in result.answer
+            assert "⚠️" not in result.answer
+
+    @pytest.mark.asyncio
+    async def test_regen_enabled_retries_on_rejection(self):
+        """Regen enabled: critic rejects → retry → critic approves regen → clean answer."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_logic_rules") as mock_logic,
+            patch("app.services.rag_pipeline.critique_answer", new_callable=AsyncMock) as mock_critic,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = True
+            mock_settings.critic_regeneration_enabled = True
+            mock_settings.citation_enabled = True
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            mock_search.return_value = _mock_search_results_kari()
+            mock_terms.return_value = []
+            mock_logic.return_value = None
+
+            # Two Gemini calls: initial + regen
+            mock_asyncio.to_thread = AsyncMock(side_effect=[
+                _mock_gemini_response("Bad answer."),
+                _mock_gemini_response("Improved answer."),
+            ])
+
+            from app.services.critic import CriticResult
+            mock_critic.side_effect = [
+                CriticResult(approved=False, feedback="Missing citations."),
+                CriticResult(approved=True, feedback=None),
+            ]
+
+            result = await answer_question("test")
+
+            assert result.answer == "Improved answer."
+            assert "პასუხი" not in result.answer
+            assert mock_asyncio.to_thread.call_count == 2
+            assert mock_critic.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_regen_fallback_on_double_reject(self):
+        """Regen enabled: critic rejects both initial and regen → Georgian disclaimer."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_logic_rules") as mock_logic,
+            patch("app.services.rag_pipeline.critique_answer", new_callable=AsyncMock) as mock_critic,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = True
+            mock_settings.critic_regeneration_enabled = True
+            mock_settings.citation_enabled = True
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            mock_search.return_value = _mock_search_results_kari()
+            mock_terms.return_value = []
+            mock_logic.return_value = None
+
+            mock_asyncio.to_thread = AsyncMock(side_effect=[
+                _mock_gemini_response("Bad answer."),
+                _mock_gemini_response("Still bad answer."),
+            ])
+
+            from app.services.critic import CriticResult
+            mock_critic.side_effect = [
+                CriticResult(approved=False, feedback="Missing citations."),
+                CriticResult(approved=False, feedback="Still wrong."),
+            ]
+
+            result = await answer_question("test")
+
+            assert "პასუხი შეიძლება არ იყოს სრულად ზუსტი" in result.answer
+            assert mock_asyncio.to_thread.call_count == 2
+            assert mock_critic.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_regen_disabled_uses_disclaimer(self):
+        """Regen disabled: critic rejects → Georgian disclaimer, 1 Gemini call only."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_logic_rules") as mock_logic,
+            patch("app.services.rag_pipeline.critique_answer", new_callable=AsyncMock) as mock_critic,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = True
+            mock_settings.critic_regeneration_enabled = False
+            mock_settings.citation_enabled = True
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            mock_search.return_value = _mock_search_results_kari()
+            mock_terms.return_value = []
+            mock_logic.return_value = None
+            mock_asyncio.to_thread = AsyncMock(
+                return_value=_mock_gemini_response("Bad answer.")
+            )
+
+            from app.services.critic import CriticResult
+            mock_critic.return_value = CriticResult(
+                approved=False,
+                feedback="Answer lacks source citations.",
+            )
+
+            result = await answer_question("test")
+
+            assert "პასუხი შეიძლება არ იყოს სრულად ზუსტი" in result.answer
+            assert mock_asyncio.to_thread.call_count == 1
+            mock_critic.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_critic_disabled_not_called(self):
