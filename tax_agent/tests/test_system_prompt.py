@@ -173,7 +173,7 @@ class TestBuildSystemPrompt:
         """Domain section appears before logic rules in the prompt."""
         prompt = build_system_prompt(
             context_chunks=["context"],
-            domain="INCOME_TAX",
+            domain="INDIVIDUAL_INCOME",
             logic_rules="RULE_MARKER",
         )
         domain_pos = prompt.index("სფერო")

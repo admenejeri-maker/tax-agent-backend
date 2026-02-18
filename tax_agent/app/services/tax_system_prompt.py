@@ -102,7 +102,7 @@ def build_system_prompt(
         source_refs: Citation references with id, article_number, title.
         is_red_zone: Whether the query triggers calculation disclaimers.
         temporal_year: Past year detected in query, if any.
-        domain: Tax domain from router (e.g. "VAT", "INCOME_TAX"), or None.
+        domain: Tax domain from router (e.g. "VAT", "INDIVIDUAL_INCOME", "CORPORATE_TAX"), or None.
         logic_rules: Pre-loaded CoL reasoning rules from logic_loader, or None.
 
     Returns:

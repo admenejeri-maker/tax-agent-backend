@@ -4,7 +4,7 @@ Tiered Query Router — Step 2
 
 Keyword-first routing with semantic fallback stub.
 Maps Georgian tax queries to semantic domains:
-  VAT, INCOME_TAX, PROPERTY_TAX, GENERAL.
+  VAT, INDIVIDUAL_INCOME, CORPORATE_TAX, PROPERTY_TAX, ADMIN_PROCEDURAL, GENERAL.
 
 Design: Keyword scan (Tier 1) covers 92-96% of Georgian tax queries
 because Georgian tax terms are unambiguous. Semantic fallback (Tier 2)
@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 class RouteResult:
     """Immutable routing classification result."""
 
-    domain: str  # "VAT", "INCOME_TAX", "PROPERTY_TAX", "GENERAL"
+    domain: str  # "VAT", "INDIVIDUAL_INCOME", "CORPORATE_TAX", "PROPERTY_TAX", "ADMIN_PROCEDURAL", "GENERAL"
     confidence: float  # 0.0 - 1.0
     method: str  # "keyword" | "semantic" | "default"
 
@@ -37,11 +37,13 @@ class RouteResult:
 
 KEYWORD_MAP: Dict[str, List[str]] = {
     "VAT": ["დღგ", "დამატებული ღირებულების"],
-    "INCOME_TAX": ["საშემოსავლო", "მოგების გადასახადი"],
+    "INDIVIDUAL_INCOME": ["საშემოსავლო", "ფიზიკური პირ", "ხელფას"],
+    "CORPORATE_TAX": ["მოგების გადასახადი", "იურიდიული პირ", "დივიდენდ"],
     "PROPERTY_TAX": ["ქონების გადასახადი"],
     "EXCISE": ["აქციზ", "აქციზი"],
     "CUSTOMS": ["საბაჟო", "იმპორტ"],
     "MICRO_BUSINESS": ["მიკრობიზნეს", "მცირე ბიზნეს"],
+    "ADMIN_PROCEDURAL": ["ჯარიმა", "საურავი", "გასაჩივრება", "დავა", "შემოწმება", "ვადები"],
 }
 
 

@@ -64,6 +64,7 @@ class TaxArticle(BaseModel):
     is_exception: bool = Field(default=False, description="Lex specialis (exception) flag")
     last_amended_date: Optional[str] = Field(default=None, description="Last amendment date (ISO format string)")
     status: ArticleStatus = Field(default=ArticleStatus.ACTIVE, description="Article lifecycle status")
+    domain: str = Field(default="GENERAL", description="Tax domain category (e.g. INDIVIDUAL_INCOME, CORPORATE_TAX, VAT)")
 
     # --- Embedding fields (populated by Task 4 pipeline) ---
     embedding: Optional[List[float]] = Field(default=None, description="768-dim vector embedding")

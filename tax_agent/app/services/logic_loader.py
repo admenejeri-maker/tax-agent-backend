@@ -35,7 +35,7 @@ def get_logic_rules(domain: str) -> Optional[str]:
     - File read fails (permission/encoding error)
 
     Args:
-        domain: Tax domain from router (e.g. "VAT", "INCOME_TAX").
+        domain: Tax domain from router (e.g. "VAT", "INDIVIDUAL_INCOME", "CORPORATE_TAX").
 
     Returns:
         Markdown string with reasoning rules, or None.

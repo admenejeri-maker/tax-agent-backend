@@ -42,6 +42,35 @@ REPEALED_KEYWORDS = ("ძალადაკარგულია", "ამოღ
 EXCEPTION_KEYWORDS = ("გარდა", "გამონაკლისი", "არ ვრცელდება")
 
 
+# ─── Domain Mapping (Georgian Tax Code article boundaries) ───────────────────
+
+_DOMAIN_RANGES = [
+    (79, 83, "INDIVIDUAL_INCOME"),
+    (84, 95, "MICRO_BUSINESS"),
+    (96, 98, "CORPORATE_TAX"),       # Estonian model (D3)
+    (99, 123, "INDIVIDUAL_INCOME"),
+    (124, 155, "CORPORATE_TAX"),
+    (156, 181, "VAT"),
+    (182, 194, "EXCISE"),
+    (195, 199, "CUSTOMS"),
+    (200, 206, "PROPERTY_TAX"),
+    (207, 237, "GENERAL"),
+    (238, 310, "ADMIN_PROCEDURAL"),
+]
+
+
+def get_domain(article_number: int) -> str:
+    """Map article number to tax domain.
+
+    Uses Georgian Tax Code chapter boundaries.
+    Returns 'GENERAL' for articles outside known ranges.
+    """
+    for start, end, domain in _DOMAIN_RANGES:
+        if start <= article_number <= end:
+            return domain
+    return "GENERAL"
+
+
 # ─── 3a: Transport ───────────────────────────────────────────────────────────
 
 
@@ -407,6 +436,7 @@ async def scrape_and_store(
 
             article = TaxArticle(
                 article_number=header["article_number"],
+                domain=get_domain(header["article_number"]),
                 kari=header["kari"],
                 tavi=header["tavi"],
                 title=header["title"],

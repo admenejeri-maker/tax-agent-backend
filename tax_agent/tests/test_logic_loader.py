@@ -71,14 +71,14 @@ def test_loader_disabled_returns_none(monkeypatch, logic_dir):
 
 def test_utf8_georgian_content(monkeypatch, tmp_path):
     """Georgian Markdown content loads correctly."""
-    geo_file = tmp_path / "income_tax_rules.md"
+    geo_file = tmp_path / "individual_income_rules.md"
     geo_file.write_text("## საშემოსავლო გადასახადი\nგანაკვეთი: 20%", encoding="utf-8")
     monkeypatch.setattr(logic_loader, "LOGIC_DIR", tmp_path)
     monkeypatch.setenv("LOGIC_RULES_ENABLED", "true")
     from config import Settings
     monkeypatch.setattr(logic_loader, "settings", Settings())
 
-    result = get_logic_rules("INCOME_TAX")
+    result = get_logic_rules("INDIVIDUAL_INCOME")
     assert "საშემოსავლო" in result
     assert "20%" in result
 

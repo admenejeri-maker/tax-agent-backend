@@ -71,6 +71,8 @@ class DatabaseManager:
             IndexModel([("title_ka", TEXT), ("title_en", TEXT)]),
             # Filter by embedding model version
             IndexModel([("embedding_model", ASCENDING)]),
+            # Filter by tax domain
+            IndexModel([("domain", ASCENDING)]),
         ]
 
         # =====================================================================
