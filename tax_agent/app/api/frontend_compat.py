@@ -174,8 +174,24 @@ async def frontend_chat_stream(
                 await conversation_store.add_turn(
                     conversation_id, user_id, "user", body.message
                 )
+                # Serialize sources for MongoDB persistence
+                sources_for_db = None
+                if rag_response.source_metadata:
+                    sources_for_db = [
+                        {
+                            "id": i + 1,
+                            "article_number": s.article_number,
+                            "chapter": s.chapter,
+                            "title": s.title,
+                            "score": s.score,
+                            "url": s.url,
+                            "text": s.text,
+                        }
+                        for i, s in enumerate(rag_response.source_metadata)
+                    ]
                 await conversation_store.add_turn(
-                    conversation_id, user_id, "assistant", rag_response.answer
+                    conversation_id, user_id, "assistant", rag_response.answer,
+                    sources=sources_for_db,
                 )
 
             # ── Stream text in chunks ─────────────────────────────────────
@@ -283,7 +299,11 @@ async def frontend_load_history(
 
     return {
         "messages": [
-            {"role": t["role"], "content": t["content"]}
+            {
+                "role": t["role"],
+                "content": t["content"],
+                **({"sources": t["sources"]} if t.get("sources") else {}),
+            }
             for t in session.get("turns", [])
         ]
     }

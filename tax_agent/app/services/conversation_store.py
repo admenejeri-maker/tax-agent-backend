@@ -71,6 +71,7 @@ class ConversationStore:
         user_id: str,
         role: str,
         content: str,
+        sources: list | None = None,
     ) -> bool:
         """Append a turn to a conversation.
 
@@ -79,6 +80,7 @@ class ConversationStore:
             user_id: Must match session owner (IDOR protection).
             role: "user" or "assistant".
             content: Message text.
+            sources: Optional list of citation source dicts.
 
         Returns:
             True if the turn was saved, False if session not found/not owned.
@@ -89,6 +91,8 @@ class ConversationStore:
             "content": content,
             "timestamp": now.isoformat(),
         }
+        if sources:
+            turn["sources"] = sources
 
         result = await self._collection.update_one(
             {
