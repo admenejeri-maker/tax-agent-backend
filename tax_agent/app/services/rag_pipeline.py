@@ -32,7 +32,11 @@ from app.services.tax_system_prompt import (
 )
 from app.services.embedding_service import get_genai_client
 from app.services.query_rewriter import rewrite_query
-from app.services.vector_search import hybrid_search
+from app.services.vector_search import (
+    hybrid_search,
+    enrich_with_cross_refs,
+    rerank_with_exceptions,
+)
 from app.services.router import route_query
 from app.services.logic_loader import get_logic_rules
 from app.services.critic import critique_answer
@@ -187,6 +191,31 @@ async def answer_question(
         # ── Step 2: Hybrid search ─────────────────────────────────
         search_results = await hybrid_search(search_query, domain=domain)
 
+        # ── Step 2.1: Cross-ref graph expansion (gated) ─────
+        if settings.graph_expansion_enabled:
+            _pre_enrich_count = len(search_results)
+            search_results = await enrich_with_cross_refs(
+                search_results,
+                max_refs=settings.max_graph_refs,
+            )
+            search_results = rerank_with_exceptions(search_results)
+            logger.info(
+                "graph_expansion",
+                primary=_pre_enrich_count,
+                total=len(search_results),
+                added=len(search_results) - _pre_enrich_count,
+            )
+
+        # ── Step 2.2: Context budget guard ─────────────────
+        total_chars = sum(len(r.get("body", "")) for r in search_results)
+        if total_chars > settings.max_context_chars:
+            search_results = search_results[:settings.search_limit]
+            logger.warning(
+                "context_budget_exceeded",
+                total=total_chars,
+                kept=len(search_results),
+            )
+
         context_chunks = [
             r.get("body", "")
             for r in search_results
@@ -194,7 +223,10 @@ async def answer_question(
         ]
 
         # ── Step 2.5: Pre-compute source metadata + citation refs ─
-        source_metadata = _extract_source_metadata(search_results)
+        # ── A10 fix: exclude cross-refs from user-facing citations ──
+        source_metadata = _extract_source_metadata(
+            [r for r in search_results if not r.get("is_cross_ref")]
+        )
 
         source_refs = None
         if settings.citation_enabled and source_metadata:
@@ -290,7 +322,10 @@ async def answer_question(
             logger.error("all_safety_attempts_failed")
 
         # ── Step 4.5: Critic QA review (gated) ──────────────────
-        confidence = _calculate_confidence(search_results)
+        # ── B1 fix: exclude cross-refs (score=0.0) from confidence ──
+        confidence = _calculate_confidence(
+            [r for r in search_results if not r.get("is_cross_ref")]
+        )
         if settings.critic_enabled and source_refs:
             critic_result = await critique_answer(
                 answer=answer_text,

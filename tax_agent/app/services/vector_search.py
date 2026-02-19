@@ -402,6 +402,7 @@ async def enrich_with_cross_refs(
     for cr in cross_refs:
         cr_dict = cr if isinstance(cr, dict) else cr.model_dump()
         cr_dict["is_cross_ref"] = True
+        cr_dict["search_type"] = "cross_ref"
         cr_dict["score"] = 0.0
         enriched_refs.append(cr_dict)
 

@@ -106,3 +106,22 @@ def test_critic_threshold_custom(monkeypatch):
 
     s = Settings()
     assert s.critic_confidence_threshold == 0.85
+
+
+# =============================================================================
+# Phase 2: Graph Expansion Config Tests
+# =============================================================================
+
+
+def test_config_graph_defaults(monkeypatch):
+    """Phase 2: Graph expansion defaults are safe (off, 5 refs, 10K chars)."""
+    monkeypatch.delenv("GRAPH_EXPANSION_ENABLED", raising=False)
+    monkeypatch.delenv("MAX_GRAPH_REFS", raising=False)
+    monkeypatch.delenv("MAX_CONTEXT_CHARS", raising=False)
+    from config import Settings
+
+    s = Settings()
+    assert s.graph_expansion_enabled is False
+    assert s.max_graph_refs == 5
+    assert s.max_context_chars == 10000
+

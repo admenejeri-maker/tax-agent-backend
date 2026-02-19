@@ -230,6 +230,54 @@ async def test_enrich_cross_refs_dedup(mock_store_cls):
     mock_store.find_by_numbers.assert_not_called()  # Nothing to fetch
 
 
+@pytest.mark.asyncio
+@patch("app.services.vector_search.TaxArticleStore")
+async def test_enriched_results_have_search_type(mock_store_cls):
+    """Phase 2 S2 fix: enriched cross-refs include search_type='cross_ref'."""
+    mock_store = MagicMock()
+    mock_store.find_by_numbers = AsyncMock(return_value=[
+        {"article_number": 82, "kari": "V", "tavi": "XIII",
+         "title": "Exception", "body": "B", "related_articles": [], "is_exception": True},
+    ])
+    mock_store_cls.return_value = mock_store
+
+    primary = [
+        {"article_number": 81, "score": 0.85, "kari": "V", "tavi": "XIII",
+         "title": "General", "body": "B", "related_articles": [82], "is_exception": False},
+    ]
+
+    results = await enrich_with_cross_refs(primary)
+
+    assert results[1]["search_type"] == "cross_ref"
+    assert results[1]["is_cross_ref"] is True
+
+
+@pytest.mark.asyncio
+@patch("app.services.vector_search.TaxArticleStore")
+async def test_enrich_max_refs_cap(mock_store_cls):
+    """Phase 2: max_refs=2 caps enrichment even when more refs available."""
+    mock_store = MagicMock()
+    mock_store.find_by_numbers = AsyncMock(return_value=[
+        {"article_number": 82, "kari": "V", "tavi": "XIII",
+         "title": "T82", "body": "B", "related_articles": [], "is_exception": False},
+        {"article_number": 83, "kari": "V", "tavi": "XIII",
+         "title": "T83", "body": "B", "related_articles": [], "is_exception": False},
+    ])
+    mock_store_cls.return_value = mock_store
+
+    primary = [
+        {"article_number": 81, "score": 0.85, "kari": "V", "tavi": "XIII",
+         "title": "General", "body": "B", "related_articles": [82, 83, 84, 85],
+         "is_exception": False},
+    ]
+
+    results = await enrich_with_cross_refs(primary, max_refs=2)
+
+    # Primary + max 2 cross-refs
+    cross_refs = [r for r in results if r.get("is_cross_ref")]
+    assert len(cross_refs) <= 2
+
+
 # ── T10: Lex Specialis Re-ranking ────────────────────────────────────────────
 
 

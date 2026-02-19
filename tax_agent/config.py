@@ -93,6 +93,17 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("CRITIC_REGENERATION_ENABLED", "false").lower() == "true"
     )
 
+    # ── Graph Expansion (Phase 2 MVP) ──
+    graph_expansion_enabled: bool = Field(
+        default_factory=lambda: os.getenv("GRAPH_EXPANSION_ENABLED", "false").lower() == "true"
+    )
+    max_graph_refs: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_GRAPH_REFS", "5"))
+    )
+    max_context_chars: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_CONTEXT_CHARS", "10000"))
+    )
+
     # =========================================================================
     # Safety & Truncation Defense
     # =========================================================================

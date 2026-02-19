@@ -38,8 +38,12 @@ USER_AGENT = "ScoopTaxAgent/1.0 (+tax-agent-backend)"
 ARTICLE_NUMBER_RE = re.compile(r"მუხლი\s+(\d+)")
 KARI_RE = re.compile(r"^კარი\s+[IVXLCDM]+\.\s*(.+)")
 TAVI_RE = re.compile(r"^თავი\s+[IVXLCDM]+\.\s*(.+)")
+BODY_CROSS_REF_RE = re.compile(r"მუხლი\s+(\d+)")
+# Ordinal form: "238-ე მუხლი", "54-ე მუხლით", "71-ე მუხლის"
+BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]?\u10d4?\s*\u10db\u10e3\u10ee\u10da")
 REPEALED_KEYWORDS = ("ძალადაკარგულია", "ამოღებულია")
 EXCEPTION_KEYWORDS = ("გარდა", "გამონაკლისი", "არ ვრცელდება")
+MAX_VALID_ARTICLE = 500  # Pydantic TaxArticle: article_number = Field(ge=1, le=500)
 
 
 # ─── Domain Mapping (Georgian Tax Code article boundaries) ───────────────────
@@ -271,6 +275,11 @@ def parse_article_body(
 
         # Collect body paragraphs
         if sibling.name == "p" and "abzacixml" in sibling.get("class", []):
+            # Layer 1: Remove <sup> tags (prima article markers like 135²)
+            # to prevent concatenation ("1352") in body text.
+            # DOM-safe: extract_cross_references() uses <a> hrefs, not <sup>.
+            for sup in sibling.find_all("sup"):
+                sup.decompose()
             text = sibling.get_text(strip=True)
             if text:
                 paragraphs.append(text)
@@ -315,6 +324,39 @@ def extract_cross_references(
             if match_ka:
                 refs.add(int(match_ka.group(1)))
 
+    return sorted(refs)
+
+
+def extract_body_cross_references(body: str, self_article: int = -1) -> List[int]:
+    """Extract cross-reference article numbers from body text via regex.
+
+    Fallback for when DOM-based extraction (a.DocumentLink) yields
+    no results — common on Matsne pages where link markup is absent.
+
+    Searches for 'მუხლი N' patterns in the body text.
+    Deduplicates and excludes self-references.
+
+    Args:
+        body: Article body text (plain text, not HTML).
+        self_article: Article number to exclude (self-reference).
+
+    Returns:
+        Sorted, deduplicated list of referenced article numbers.
+    """
+    if not body:
+        return []
+
+    refs: set = set()
+    # Pattern 1: "მუხლი N" (base form)
+    for m in BODY_CROSS_REF_RE.findall(body):
+        refs.add(int(m))
+    # Pattern 2: "N-ე მუხლი" (ordinal form)
+    for m in BODY_CROSS_REF_ORDINAL_RE.findall(body):
+        refs.add(int(m))
+    refs.discard(self_article)  # Exclude self-reference
+    # Layer 2: Filter phantom article numbers from prima concatenation
+    # (e.g., Unicode superscripts ¹²³ producing 1352 from 135²)
+    refs = {r for r in refs if 1 <= r <= MAX_VALID_ARTICLE}
     return sorted(refs)
 
 
@@ -426,8 +468,15 @@ async def scrape_and_store(
                 skipped += 1
                 continue
 
-            refs = extract_cross_references(
+            dom_refs = extract_cross_references(
                 header["header_tag"], next_header_tag,
+            )
+            body_refs = extract_body_cross_references(
+                body, self_article=header["article_number"],
+            )
+            refs = sorted(
+                r for r in set(dom_refs + body_refs)
+                if 1 <= r <= MAX_VALID_ARTICLE
             )
             is_exception = detect_exception_article(body)
             embedding_text = (

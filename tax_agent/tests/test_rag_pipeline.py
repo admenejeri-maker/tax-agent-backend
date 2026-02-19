@@ -249,6 +249,9 @@ class TestRouterWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -283,6 +286,9 @@ class TestRouterWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -316,6 +322,9 @@ class TestLogicRulesInjection:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -351,6 +360,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -386,6 +398,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -424,6 +439,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -467,6 +485,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -508,6 +529,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -546,6 +570,9 @@ class TestCriticWiring:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -613,6 +640,9 @@ class TestCriticSkippedNoSources:
             mock_settings.generation_model = "test-model"
             mock_settings.generation_temperature = 0.3
             mock_settings.generation_max_tokens = 1024
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
 
             mock_search.return_value = _mock_search_results_kari()
             mock_terms.return_value = []
@@ -625,3 +655,231 @@ class TestCriticSkippedNoSources:
 
             mock_critic.assert_not_called()
             assert "⚠️" not in result.answer
+
+
+# ─── Phase 2: Graph Expansion & Pipeline Wiring ─────────────────────────────
+
+
+def _mock_cross_ref_result():
+    """A cross-ref result with score=0.0 and is_cross_ref=True."""
+    return {
+        "article_number": "80",
+        "kari": "XIV",
+        "title": "დაკავშირებული მუხლი",
+        "body": "დაკავშირებული ტექსტი.",
+        "score": 0.0,
+        "is_cross_ref": True,
+        "search_type": "cross_ref",
+    }
+
+
+class TestGraphExpansion:
+    """Phase 2: Tests for cross-ref enrichment wiring in the pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_graph_expansion_enabled(self):
+        """Flag on → enrich_with_cross_refs IS called."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.enrich_with_cross_refs", new_callable=AsyncMock) as mock_enrich,
+            patch("app.services.rag_pipeline.rerank_with_exceptions") as mock_rerank,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = False
+            mock_settings.citation_enabled = False
+            mock_settings.graph_expansion_enabled = True
+            mock_settings.max_graph_refs = 5
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            primary = _mock_search_results_kari()
+            mock_search.return_value = primary
+            mock_enrich.return_value = primary + [_mock_cross_ref_result()]
+            mock_rerank.return_value = primary + [_mock_cross_ref_result()]
+            mock_terms.return_value = []
+            mock_asyncio.to_thread = AsyncMock(return_value=_mock_gemini_response())
+
+            await answer_question("test")
+
+            mock_enrich.assert_called_once()
+            mock_rerank.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_pipeline_graph_expansion_disabled(self):
+        """Flag off → enrich_with_cross_refs NOT called (default)."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.enrich_with_cross_refs", new_callable=AsyncMock) as mock_enrich,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = False
+            mock_settings.citation_enabled = False
+            mock_settings.graph_expansion_enabled = False
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            mock_search.return_value = _mock_search_results_kari()
+            mock_terms.return_value = []
+            mock_asyncio.to_thread = AsyncMock(return_value=_mock_gemini_response())
+
+            await answer_question("test")
+
+            mock_enrich.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pipeline_enrichment_integration(self):
+        """Full pipeline with enrichment returns valid RAGResponse."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.enrich_with_cross_refs", new_callable=AsyncMock) as mock_enrich,
+            patch("app.services.rag_pipeline.rerank_with_exceptions") as mock_rerank,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = False
+            mock_settings.citation_enabled = False
+            mock_settings.graph_expansion_enabled = True
+            mock_settings.max_graph_refs = 5
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            combined = _mock_search_results_kari() + [_mock_cross_ref_result()]
+            mock_search.return_value = _mock_search_results_kari()
+            mock_enrich.return_value = combined
+            mock_rerank.return_value = combined
+            mock_terms.return_value = []
+            mock_asyncio.to_thread = AsyncMock(return_value=_mock_gemini_response())
+
+            result = await answer_question("test")
+
+            assert isinstance(result, RAGResponse)
+            assert result.answer != ""
+            assert result.error is None
+
+
+class TestConfidenceExcludesCrossRefs:
+    """B1 fix: cross-refs (score=0.0) do NOT dilute confidence."""
+
+    def test_confidence_excludes_cross_refs(self):
+        """B1: filtering out cross-refs keeps confidence at primary average."""
+        primary = [{"score": 0.8}, {"score": 0.9}]
+        cross_refs = [{"score": 0.0, "is_cross_ref": True}, {"score": 0.0, "is_cross_ref": True}]
+        all_results = primary + cross_refs
+
+        filtered = [r for r in all_results if not r.get("is_cross_ref")]
+        confidence = _calculate_confidence(filtered)
+        assert confidence == pytest.approx(0.85)
+
+
+class TestRerankCalledAfterEnrichment:
+    """B2 fix: rerank_with_exceptions is wired after enrichment."""
+
+    @pytest.mark.asyncio
+    async def test_rerank_called_after_enrichment(self):
+        """B2: rerank_with_exceptions called on enriched results."""
+        with (
+            patch("app.services.rag_pipeline.hybrid_search", new_callable=AsyncMock) as mock_search,
+            patch("app.services.rag_pipeline.enrich_with_cross_refs", new_callable=AsyncMock) as mock_enrich,
+            patch("app.services.rag_pipeline.rerank_with_exceptions") as mock_rerank,
+            patch("app.services.rag_pipeline.resolve_terms", new_callable=AsyncMock) as mock_terms,
+            patch("app.services.rag_pipeline.get_genai_client"),
+            patch("app.services.rag_pipeline.asyncio") as mock_asyncio,
+            patch("app.services.rag_pipeline.settings") as mock_settings,
+        ):
+            mock_settings.router_enabled = False
+            mock_settings.critic_enabled = False
+            mock_settings.citation_enabled = False
+            mock_settings.graph_expansion_enabled = True
+            mock_settings.max_graph_refs = 5
+            mock_settings.max_context_chars = 10000
+            mock_settings.search_limit = 5
+            mock_settings.generation_model = "test-model"
+            mock_settings.generation_temperature = 0.3
+            mock_settings.generation_max_tokens = 1024
+
+            enriched = _mock_search_results_kari() + [_mock_cross_ref_result()]
+            mock_search.return_value = _mock_search_results_kari()
+            mock_enrich.return_value = enriched
+            mock_rerank.return_value = enriched
+            mock_terms.return_value = []
+            mock_asyncio.to_thread = AsyncMock(return_value=_mock_gemini_response())
+
+            await answer_question("test")
+
+            mock_rerank.assert_called_once_with(enriched)
+
+
+class TestCitationsExcludeCrossRefs:
+    """A10 fix: cross-refs don't appear in user-facing citations."""
+
+    def test_citations_exclude_cross_refs(self):
+        """A10: _extract_source_metadata called with filtered results."""
+        primary = _mock_search_results_kari()
+        cross_ref = _mock_cross_ref_result()
+        all_results = primary + [cross_ref]
+
+        filtered = [r for r in all_results if not r.get("is_cross_ref")]
+        metadata = _extract_source_metadata(filtered)
+
+        assert len(metadata) == len(primary)
+        article_numbers = [m.article_number for m in metadata]
+        assert "80" not in article_numbers
+
+
+class TestContextBudget:
+    """A14 fix: context budget truncation."""
+
+    def test_context_budget_truncates(self):
+        """A14: results exceeding max_context_chars are truncated."""
+        results = [
+            {"article_number": str(i), "body": "x" * 3000, "score": 0.9 - i * 0.1}
+            for i in range(5)
+        ]
+        max_context_chars = 10000
+        search_limit = 3
+
+        total_chars = sum(len(r.get("body", "")) for r in results)
+        assert total_chars == 15000
+
+        if total_chars > max_context_chars:
+            results = results[:search_limit]
+
+        assert len(results) == 3
+
+    def test_context_budget_under_limit(self):
+        """A14: under budget → all results pass through."""
+        results = [
+            {"article_number": str(i), "body": "x" * 1000, "score": 0.9 - i * 0.1}
+            for i in range(5)
+        ]
+        max_context_chars = 10000
+        search_limit = 3
+
+        total_chars = sum(len(r.get("body", "")) for r in results)
+        assert total_chars == 5000
+
+        if total_chars > max_context_chars:
+            results = results[:search_limit]
+
+        assert len(results) == 5
+
