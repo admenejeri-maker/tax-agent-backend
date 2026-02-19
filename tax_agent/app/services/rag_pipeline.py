@@ -214,6 +214,16 @@ async def answer_question(
             logic_rules=logic_rules,
         )
 
+        # 🔍 DEBUG: Log system prompt key markers
+        logger.info(
+            "system_prompt_built",
+            prompt_len=len(system_prompt),
+            has_emoji_sources="📚 წყაროები" in system_prompt,
+            has_markdown_rule="Markdown" in system_prompt,
+            has_citations=source_refs is not None,
+            preview=system_prompt[:500],
+        )
+
         # ── Step 4: Gemini generation ─────────────────────────────
         client = get_genai_client()
         contents = _build_contents(
@@ -262,6 +272,8 @@ async def answer_question(
                     attempt=attempt_num, model=model,
                     finish_reason=block_reason,
                     answer_len=len(text),
+                    answer_preview=text[:300],
+                    has_emoji_footer="📚 წყაროები" in text,
                 )
                 if safety_fallback:
                     logger.info(

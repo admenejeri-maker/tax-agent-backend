@@ -183,11 +183,11 @@ class TestBuildSystemPrompt:
     # ── Citation Format Regression Guard ──────────────────────────────
 
     def test_few_shot_citation_inline_and_footer(self):
-        """Few-Shot ✅ uses [N] inline + 'წყარო: [N] მუხლი' at bottom."""
+        """Few-Shot ✅ uses [N] inline + '📚 წყაროები' heading at bottom."""
         good_section = BASE_SYSTEM_PROMPT.split("ასე კი")[1]
         assert "[1]" in good_section
         assert "[2]" in good_section
-        footer = good_section.split("წყარო:")[1]
+        footer = good_section.split("📚 წყაროები")[1]
         assert "მუხლი" in footer
 
     def test_instructions_use_bracket_n_format(self):
@@ -196,9 +196,37 @@ class TestBuildSystemPrompt:
         assert "მუხლის ნომერი" not in BASE_SYSTEM_PROMPT
 
     def test_citation_injection_has_footer_template(self):
-        """Citation injection section includes bottom format template."""
+        """Citation injection section uses 📚 წყაროები format."""
         refs = [{"id": 1, "article_number": "89", "title": "T"}]
         prompt = build_system_prompt(context_chunks=["c"], source_refs=refs)
         citation_section = prompt.split("ციტატა")[1]
-        assert "წყარო:" in citation_section
+        assert "📚 წყაროები" in citation_section
         assert "მუხლი" in citation_section
+
+    # ── 3-Layer Defense: Formatting Regression Guard ──────────────────
+
+    def test_markdown_rule_in_tone(self):
+        """Tone rules include Markdown formatting instruction."""
+        assert "Markdown" in BASE_SYSTEM_PROMPT or "მუქი" in BASE_SYSTEM_PROMPT
+
+    def test_few_shot_has_emoji_sources_heading(self):
+        """Few-shot ✅ example uses 📚 წყაროები heading."""
+        good_section = BASE_SYSTEM_PROMPT.split("ასე კი")[1]
+        assert "📚 წყაროები" in good_section
+
+    def test_citation_uses_bullet_format(self):
+        """Citation template uses - (dash) bullet format."""
+        refs = [{"id": 1, "article_number": "89", "title": "T"}]
+        prompt = build_system_prompt(context_chunks=["c"], source_refs=refs)
+        assert "- [1]" in prompt
+
+    def test_tone_rule_3_consistent_with_template(self):
+        """Tone rule 3 mentions 📚 წყაროები to match citation template."""
+        assert "📚 წყაროები" in BASE_SYSTEM_PROMPT
+
+    def test_few_shot_uses_markdown_formatting(self):
+        """Few-shot ✅ example must use **bold** and - bullets in body."""
+        good_section = BASE_SYSTEM_PROMPT.split("ასე კი")[1]
+        assert "**" in good_section, "Few-shot must use **bold** markers"
+        assert "\n- " in good_section, "Few-shot must use - (dash) bullet points"
+

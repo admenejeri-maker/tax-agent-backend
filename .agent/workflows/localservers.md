@@ -11,7 +11,7 @@ Start the Tax Agent backend (FastAPI/Uvicorn) on port **8000** and the Scoop fro
 | Service | Port | Directory |
 |---------|------|-----------|
 | **Tax Agent Backend** | `:8000` | `/Users/maqashable/Desktop/scoop-sagadasaxado/tax_agent` |
-| **Scoop Frontend** | `:3010` | `/Users/maqashable/Desktop/scoop/frontend` |
+| **Tax Agent Frontend** | `:3010` | `/Users/maqashable/Desktop/scoop-sagadasaxado/frontend` |
 
 > ⚠️ Scoop backend (`:8080`) is NOT used in this project. Frontend connects directly to Tax Agent on `:8000`.
 
@@ -60,7 +60,7 @@ INFO:     Application startup complete.
 ## Step 3: Start Frontend (port 3010)
 
 ```bash
-cd /Users/maqashable/Desktop/scoop/frontend && npx next dev -p 3010
+cd /Users/maqashable/Desktop/scoop-sagadasaxado/frontend && npx next dev -p 3010
 ```
 
 **Important notes:**
@@ -119,5 +119,5 @@ cd /Users/maqashable/Desktop/scoop-sagadasaxado/tax_agent && \
 .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # 3. Frontend (run in separate terminal)
-cd /Users/maqashable/Desktop/scoop/frontend && npx next dev -p 3010
+cd /Users/maqashable/Desktop/scoop-sagadasaxado/frontend && npx next dev -p 3010
 ```
