@@ -846,40 +846,125 @@ class TestCitationsExcludeCrossRefs:
         assert "80" not in article_numbers
 
 
-class TestContextBudget:
-    """A14 fix: context budget truncation."""
+class TestPackContext:
+    """Phase 2 fix: pack_context replaces crude slice with budget-aware packing."""
 
-    def test_context_budget_truncates(self):
-        """A14: results exceeding max_context_chars are truncated."""
+    # ── Unit Tests (6) ────────────────────────────────────────────────────────
+
+    def test_all_fit_unchanged(self):
+        """All results fit within budget → returned unchanged."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [
+            {"article_number": "82", "body": "x" * 500, "score": 0.9},
+            {"article_number": "83", "body": "y" * 500, "score": 0.85},
+        ]
+        packed = pack_context(results, budget=5000)
+        assert len(packed) == 2
+        assert packed[0]["article_number"] == "82"
+        assert packed[1]["article_number"] == "83"
+
+    def test_budget_exceeded_stops(self):
+        """When budget is exceeded, stops adding results."""
+        from app.services.rag_pipeline import pack_context
+
         results = [
             {"article_number": str(i), "body": "x" * 3000, "score": 0.9 - i * 0.1}
             for i in range(5)
         ]
-        max_context_chars = 10000
-        search_limit = 3
+        # 5 * 3000 = 15000 chars, budget 10000 → should keep 3 full + maybe truncate 4th
+        packed = pack_context(results, budget=10000)
+        assert len(packed) < 5
+        # Total packed body length should not exceed budget
+        total = sum(len(r.get("body", "")) for r in packed)
+        assert total <= 10000
 
-        total_chars = sum(len(r.get("body", "")) for r in results)
-        assert total_chars == 15000
+    def test_last_truncated_with_ellipsis(self):
+        """Last fitting result is truncated with [...] marker."""
+        from app.services.rag_pipeline import pack_context
 
-        if total_chars > max_context_chars:
-            results = results[:search_limit]
-
-        assert len(results) == 3
-
-    def test_context_budget_under_limit(self):
-        """A14: under budget → all results pass through."""
         results = [
-            {"article_number": str(i), "body": "x" * 1000, "score": 0.9 - i * 0.1}
-            for i in range(5)
+            {"article_number": "1", "body": "x" * 800, "score": 0.9},
+            {"article_number": "2", "body": "y" * 500, "score": 0.8},
         ]
-        max_context_chars = 10000
-        search_limit = 3
+        # budget=1100: first takes 800, remaining=300, second=500 > 300
+        # remaining (300) > 200 threshold → truncate second
+        packed = pack_context(results, budget=1100)
+        assert len(packed) == 2
+        assert packed[1]["body"].endswith("\n[...]")
+        assert len(packed[1]["body"]) <= 300
 
-        total_chars = sum(len(r.get("body", "")) for r in results)
-        assert total_chars == 5000
+    def test_preserves_rrf_order(self):
+        """Results maintain their input (reranked) order."""
+        from app.services.rag_pipeline import pack_context
 
-        if total_chars > max_context_chars:
-            results = results[:search_limit]
+        results = [
+            {"article_number": "A", "body": "first", "score": 0.95},
+            {"article_number": "B", "body": "second", "score": 0.80},
+            {"article_number": "C", "body": "third", "score": 0.70},
+        ]
+        packed = pack_context(results, budget=50000)
+        assert [r["article_number"] for r in packed] == ["A", "B", "C"]
 
-        assert len(results) == 5
+    def test_empty_input_returns_empty(self):
+        """Empty input returns empty list without errors."""
+        from app.services.rag_pipeline import pack_context
+
+        packed = pack_context([], budget=10000)
+        assert packed == []
+
+    def test_single_huge_document_truncated(self):
+        """Single document larger than budget is truncated."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [{"article_number": "1", "body": "x" * 50000, "score": 0.9}]
+        packed = pack_context(results, budget=10000)
+        assert len(packed) == 1
+        total = sum(len(r.get("body", "")) for r in packed)
+        assert total <= 10000
+        assert packed[0]["body"].endswith("\n[...]")
+
+    # ── Stress Tests (4) ──────────────────────────────────────────────────────
+
+    def test_stress_50_results_budget_10k(self):
+        """50 results × 500 chars each (25K total), budget 10K → packs ~20."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [
+            {"article_number": str(i), "body": "z" * 500, "score": 0.99 - i * 0.01}
+            for i in range(50)
+        ]
+        packed = pack_context(results, budget=10000)
+        total = sum(len(r.get("body", "")) for r in packed)
+        assert total <= 10000
+        assert len(packed) == 20  # 20 × 500 = 10000 exactly
+
+    def test_stress_single_50k_budget_10k(self):
+        """Single 50K-char document, budget 10K → truncated to ≤10K."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [{"article_number": "1", "body": "a" * 50000, "score": 0.95}]
+        packed = pack_context(results, budget=10000)
+        assert len(packed) == 1
+        total = sum(len(r.get("body", "")) for r in packed)
+        assert total <= 10000
+
+    def test_stress_zero_budget(self):
+        """Budget=0 → empty result, no crash."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [{"article_number": "1", "body": "content", "score": 0.9}]
+        packed = pack_context(results, budget=0)
+        assert packed == []
+
+    def test_stress_all_empty_body(self):
+        """All results with empty body → all pass through (0 chars each)."""
+        from app.services.rag_pipeline import pack_context
+
+        results = [
+            {"article_number": str(i), "body": "", "score": 0.5}
+            for i in range(10)
+        ]
+        packed = pack_context(results, budget=100)
+        assert len(packed) == 10
 

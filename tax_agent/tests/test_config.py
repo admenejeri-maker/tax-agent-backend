@@ -20,7 +20,7 @@ def test_config_defaults():
     assert settings.rate_limit == 30
     assert settings.host == "0.0.0.0"
     assert settings.port == 8000
-    assert settings.debug is True
+    assert settings.debug is False
     assert settings.require_api_key is False
     assert settings.api_key_max_per_ip == 10
 
@@ -124,4 +124,45 @@ def test_config_graph_defaults(monkeypatch):
     assert s.graph_expansion_enabled is False
     assert s.max_graph_refs == 5
     assert s.max_context_chars == 10000
+
+
+# =============================================================================
+# Debug Flag Stress Tests
+# =============================================================================
+
+
+def test_debug_default_false_isolated(monkeypatch):
+    """Debug defaults to False in isolation (production safety)."""
+    monkeypatch.delenv("DEBUG", raising=False)
+    from config import Settings
+
+    s = Settings()
+    assert s.debug is False
+
+
+def test_debug_env_override_true(monkeypatch):
+    """Debug activates when DEBUG=true is set in env."""
+    monkeypatch.setenv("DEBUG", "true")
+    from config import Settings
+
+    s = Settings()
+    assert s.debug is True
+
+
+def test_debug_env_override_case_insensitive(monkeypatch):
+    """Debug flag handles uppercase 'TRUE' correctly."""
+    monkeypatch.setenv("DEBUG", "TRUE")
+    from config import Settings
+
+    s = Settings()
+    assert s.debug is True
+
+
+def test_debug_env_invalid_value(monkeypatch):
+    """Non-'true' values (like 'yes', '1') default to False."""
+    monkeypatch.setenv("DEBUG", "yes")
+    from config import Settings
+
+    s = Settings()
+    assert s.debug is False
 

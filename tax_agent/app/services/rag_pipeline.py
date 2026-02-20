@@ -140,6 +140,49 @@ def _calculate_confidence(results: List[dict]) -> float:
     return min(max(avg, 0.0), 1.0)
 
 
+def pack_context(results: List[dict], budget: int) -> List[dict]:
+    """Pack search results by RRF relevance order until budget exhausted.
+
+    Replaces the old crude slicing (search_results[:search_limit]) with
+    budget-aware packing that respects reranked order and uses partial
+    truncation for the last fitting result.
+
+    Args:
+        results: Search results already sorted by rerank_with_exceptions.
+        budget: Maximum total characters for all body fields combined.
+
+    Returns:
+        Packed results list, each with body ≤ remaining budget.
+    """
+    if not results or budget <= 0:
+        return []
+
+    packed = []
+    remaining = budget
+    for r in results:
+        body = r.get("body", "")
+        body_len = len(body)
+        if body_len <= remaining:
+            packed.append(r)
+            remaining -= body_len
+        elif remaining > 200:
+            # Partial truncation: include truncated body with marker
+            truncated_body = body[:remaining - len("\n[...]")] + "\n[...]"
+            packed.append({**r, "body": truncated_body})
+            break
+        else:
+            break
+
+    if len(packed) < len(results):
+        logger.info(
+            "context_packed",
+            kept=len(packed),
+            dropped=len(results) - len(packed),
+            budget=budget,
+        )
+    return packed
+
+
 async def answer_question(
     query: str,
     *,
@@ -207,14 +250,7 @@ async def answer_question(
             )
 
         # ── Step 2.2: Context budget guard ─────────────────
-        total_chars = sum(len(r.get("body", "")) for r in search_results)
-        if total_chars > settings.max_context_chars:
-            search_results = search_results[:settings.search_limit]
-            logger.warning(
-                "context_budget_exceeded",
-                total=total_chars,
-                kept=len(search_results),
-            )
+        search_results = pack_context(search_results, settings.max_context_chars)
 
         context_chunks = [
             r.get("body", "")
