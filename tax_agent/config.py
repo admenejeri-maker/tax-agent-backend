@@ -104,6 +104,20 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("MAX_CONTEXT_CHARS", "10000"))
     )
 
+    # ── Follow-Up Suggestions (Phase 1: Quick Replies) ──
+    follow_up_enabled: bool = Field(
+        default_factory=lambda: os.getenv("FOLLOW_UP_ENABLED", "true").lower() == "true"
+    )
+    follow_up_model: str = Field(
+        default_factory=lambda: os.getenv("FOLLOW_UP_MODEL", "gemini-2.0-flash")
+    )
+    follow_up_max_suggestions: int = Field(
+        default_factory=lambda: int(os.getenv("FOLLOW_UP_MAX_SUGGESTIONS", "4"))
+    )
+    follow_up_timeout: float = Field(
+        default_factory=lambda: float(os.getenv("FOLLOW_UP_TIMEOUT", "5.0"))
+    )
+
     # =========================================================================
     # Safety & Truncation Defense
     # =========================================================================

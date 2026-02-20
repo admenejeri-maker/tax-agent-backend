@@ -44,3 +44,4 @@ class RAGResponse(BaseModel):
     temporal_warning: Optional[str] = None
     error: Optional[str] = None
     safety_fallback: bool = False  # True if response used relaxed safety / backup model
+    follow_up_suggestions: List[dict] = Field(default_factory=list)  # Phase 1: Quick Replies

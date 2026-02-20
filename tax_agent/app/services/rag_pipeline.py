@@ -40,6 +40,7 @@ from app.services.vector_search import (
 from app.services.router import route_query
 from app.services.logic_loader import get_logic_rules
 from app.services.critic import critique_answer
+from app.services.follow_up_generator import generate_follow_ups
 from app.services.safety import (
     build_generation_config,
     check_safety_block,
@@ -412,6 +413,15 @@ async def answer_question(
         elif settings.critic_enabled and not source_refs:
             logger.debug("critic_skipped_no_sources")
 
+        # ── Step 4.6: Follow-up suggestions (gated) ─────────────
+        follow_ups = []
+        if settings.follow_up_enabled and not is_red_zone and answer_text != SAFETY_FALLBACK_MESSAGE:
+            follow_ups = await generate_follow_ups(
+                answer=answer_text,
+                query=query,
+                domain=domain,
+            )
+
         # ── Step 5: Assemble response ─────────────────────────────
         source_refs_list = [
             str(r.get("article_number", "unknown"))
@@ -434,6 +444,7 @@ async def answer_question(
             disclaimer=disclaimer,
             temporal_warning=temporal_warning,
             safety_fallback=safety_fallback,
+            follow_up_suggestions=follow_ups,
         )
 
     except Exception as e:

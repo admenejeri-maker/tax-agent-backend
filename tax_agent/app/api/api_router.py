@@ -197,7 +197,11 @@ async def ask_stream(
             await conversation_store.add_turn(conversation_id, user_id, "user", body.question)
             await conversation_store.add_turn(conversation_id, user_id, "assistant", rag_response.answer)
 
-            # ── Done ──────────────────────────────────────────────────
+            # ── Quick replies (follow-up suggestions) ──────────────
+            if rag_response.follow_up_suggestions:
+                yield _sse_event("quick_replies", {"options": rag_response.follow_up_suggestions})
+
+            # ── Done ──────────────────────────────────────────────
             yield _sse_event("done", {
                 "conversation_id": conversation_id,
                 "confidence_score": rag_response.confidence_score,

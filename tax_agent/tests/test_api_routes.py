@@ -81,6 +81,9 @@ def mock_rag_pipeline():
         mock_src.url = "https://matsne.gov.ge/ka/document/view/1043717/most-current-version#Article_169"
         mock_src.text = "დღგ-ს განაკვეთი შეადგენს 18 პროცენტს საქონლისა და მომსახურების მიწოდებისას."
         mock_response.source_metadata = [mock_src]
+        mock_response.follow_up_suggestions = [
+            {"title": "რა?", "payload": "რა არის დღგ?"}
+        ]  # Phase 1: Quick Replies
 
         mock_aq.return_value = mock_response
         yield mock_aq, mock_response
@@ -272,6 +275,7 @@ class TestStreamEndpoint:
         assert event_types[0] == "thinking"
         assert "sources" in event_types
         assert "text" in event_types
+        assert "quick_replies" in event_types
         assert event_types[-1] == "done"
 
     @pytest.mark.asyncio

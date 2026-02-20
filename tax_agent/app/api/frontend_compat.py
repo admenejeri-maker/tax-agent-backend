@@ -221,6 +221,10 @@ async def frontend_chat_stream(
                     disclaimer_text += f"\n⏰ *{rag_response.temporal_warning}*"
                 yield _sse("text", {"content": disclaimer_text})
 
+            # ── Quick replies (follow-up suggestions) ──────────────────
+            if rag_response.follow_up_suggestions:
+                yield _sse("quick_replies", {"options": rag_response.follow_up_suggestions})
+
             # ── Done — Frontend expects {session_id: "..."} ──────────────
             yield _sse("done", {"session_id": conversation_id})
 

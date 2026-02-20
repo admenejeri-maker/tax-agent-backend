@@ -347,9 +347,11 @@ class TestPipelineSafetyRetry:
             mock_settings.keyword_search_enabled = True
             mock_settings.similarity_threshold = 0.5
             mock_settings.search_limit = 5
+            mock_settings.max_context_chars = 6000
             mock_settings.router_enabled = False
             mock_settings.logic_rules_enabled = False
             mock_settings.citation_enabled = False
+            mock_settings.follow_up_enabled = False
 
             result = await answer_question("test question")
             # Should return fallback message (only 1 attempt, and it was blocked)
