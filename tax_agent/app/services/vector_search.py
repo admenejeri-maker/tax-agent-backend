@@ -495,18 +495,28 @@ def merge_and_rank(results: List[dict]) -> List[dict]:
     Splits results by search_type, ranks each source independently,
     then fuses using RRF to produce a scale-agnostic merged ranking.
 
+    Cross-references are separated before RRF: they must never compete
+    with primary results in the fusion step (they would form singleton
+    buckets with RRF ≈ 0.01639, identical to lonely primary results).
+    Cross-refs are always appended after all primary results.
+
     Args:
         results: List of article dicts, possibly with duplicates.
 
     Returns:
-        Deduplicated list sorted by RRF score (descending).
+        Deduplicated list sorted by RRF score (descending), with all
+        cross-reference results appended after primary results.
     """
     if not results:
         return []
 
-    # ── Split by source for independent ranking ──
+    # ── Separate cross-refs: must never compete with primaries in RRF ──
+    primary = [r for r in results if r.get("search_type") != "cross_ref"]
+    cross_refs = [r for r in results if r.get("search_type") == "cross_ref"]
+
+    # ── Split primaries by source for independent ranking ──
     buckets: dict[str, List[dict]] = {}
-    for r in results:
+    for r in primary:
         source = r.get("search_type", "semantic")
         buckets.setdefault(source, []).append(r)
 
@@ -516,4 +526,5 @@ def merge_and_rank(results: List[dict]) -> List[dict]:
         for bucket in buckets.values()
     ]
 
-    return _rrf_score(ranked_lists)
+    fused = _rrf_score(ranked_lists)
+    return fused + cross_refs

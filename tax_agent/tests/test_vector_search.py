@@ -615,3 +615,73 @@ async def test_semantic_search_domain_fallback(mock_do_search):
     assert mock_do_search.call_args_list[0].kwargs["domain"] == "CORPORATE_TAX"
     # Second call: without domain
     assert mock_do_search.call_args_list[1].kwargs["domain"] is None
+
+
+# ── Fix 1 — RRF Collision Guard (TDD) ────────────────────────────────────────
+
+
+def test_cross_refs_never_outrank_primary_rrf_collision():
+    """Fix 1 — T24: Singleton cross-ref must NOT outrank singleton primary via RRF tie.
+
+    Before fix: cross_ref forms its own RRF bucket (rank=1), same RRF score as a lonely
+    primary result → undefined sort order. After fix: primary always comes first.
+    """
+    results = [
+        {"article_number": 81, "score": 0.85, "search_type": "semantic"},
+        {"article_number": 99, "score": 0.0,  "search_type": "cross_ref"},
+    ]
+    merged = merge_and_rank(results)
+    assert merged[0]["article_number"] == 81, "Primary must always rank before cross-ref"
+    assert merged[1]["article_number"] == 99
+    assert merged[1]["search_type"] == "cross_ref"
+
+
+def test_cross_refs_appended_after_all_primary_results():
+    """Fix 1 — T25: ALL cross-refs must land after ALL primary results, regardless of count."""
+    results = [
+        {"article_number": 10, "score": 0.9, "search_type": "semantic"},
+        {"article_number": 20, "score": 0.6, "search_type": "keyword"},
+        {"article_number": 30, "score": 0.4, "search_type": "semantic"},
+        {"article_number": 99, "score": 0.0, "search_type": "cross_ref"},
+        {"article_number": 100, "score": 0.0, "search_type": "cross_ref"},
+    ]
+    merged = merge_and_rank(results)
+    last_primary_idx = max(
+        i for i, r in enumerate(merged) if r.get("search_type") != "cross_ref"
+    )
+    first_cross_idx = min(
+        i for i, r in enumerate(merged) if r.get("search_type") == "cross_ref"
+    )
+    assert last_primary_idx < first_cross_idx, (
+        f"Primary at idx {last_primary_idx} must precede first cross-ref at idx {first_cross_idx}"
+    )
+
+
+def test_merge_and_rank_no_cross_refs_unchanged():
+    """Fix 1 — T26: Normal operation (no cross-refs) must be unaffected by the fix."""
+    results = [
+        {"article_number": 10, "score": 0.9, "search_type": "semantic"},
+        {"article_number": 20, "score": 0.3, "search_type": "keyword"},
+    ]
+    merged = merge_and_rank(results)
+    assert len(merged) == 2
+    article_numbers = {r["article_number"] for r in merged}
+    assert article_numbers == {10, 20}
+
+
+def test_merge_and_rank_cross_ref_same_article_number_as_primary():
+    """Fix 1 — T27: Cross-ref sharing article_number with a primary appears once in primary list,
+    and once in the cross-ref tail — dedup is handled upstream by enrich_with_cross_refs.
+    This test verifies the separation logic doesn't lose the primary entry.
+    """
+    results = [
+        {"article_number": 81, "score": 0.85, "search_type": "semantic"},
+        {"article_number": 81, "score": 0.0,  "search_type": "cross_ref"},
+    ]
+    merged = merge_and_rank(results)
+    primary = [r for r in merged if r.get("search_type") != "cross_ref"]
+    cross = [r for r in merged if r.get("search_type") == "cross_ref"]
+    assert len(primary) == 1
+    assert primary[0]["article_number"] == 81
+    assert len(cross) == 1
+    assert cross[0]["article_number"] == 81

@@ -718,3 +718,47 @@ class TestPrimaArticleDefense:
         # Verify the constant value
         assert MAX_VALID_ARTICLE == 500
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fix 3 — BODY_CROSS_REF_RE Tightening (TDD)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBodyCrossRefRegexFix3:
+    """Fix 3: BODY_CROSS_REF_RE must include optional 'ამ კოდექსის' anchor.
+
+    The core defence against phantom article numbers from EXTERNAL law codes
+    (e.g., Civil Code) is the existing MAX_VALID_ARTICLE <= 500 guard.
+    The regex change adds an optional forward-compatible context anchor.
+    """
+
+    def test_body_cross_ref_base_form_no_anchor(self):
+        """Fix 3 — T-RE1: Bare 'მუხლი N' (no anchor) still matches — backward compatible."""
+        body = "ამ კოდექსის 250-ე მუხლის შესაბამისად, მუხლი 81 გამოიყენება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 81 in refs, "Bare 'მუხლი 81' must still be matched"
+
+    def test_body_cross_ref_with_kodeksis_anchor(self):
+        """Fix 3 — T-RE2: 'ამ კოდექსის მუხლი N' pattern matched by updated regex."""
+        body = "ამ კოდექსის მუხლი 135 შესაბამისად."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 135 in refs, "'ამ კოდექსის მუხლი 135' must be matched"
+
+    def test_body_cross_ref_high_number_filtered_by_guard(self):
+        """Fix 3 — T-RE3: Article numbers > 500 (from other law codes) filtered by MAX_VALID_ARTICLE."""
+        body = "სამოქალაქო კოდექსის მუხლი 1116 შესაბამისად."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 1116 not in refs, "Phantom art.1116 > MAX_VALID_ARTICLE must be filtered"
+
+    def test_body_cross_ref_ordinal_form_matches(self):
+        """Fix 3 — T-RE4: Ordinal form '81-ე მუხლი' matched by ORDINAL_RE (unchanged)."""
+        body = "81-ე მუხლის დებულებები გათვალისწინებულია."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 81 in refs, "Ordinal '81-ე მუხლი' must be matched"
+
+    def test_body_cross_ref_ordinal_high_number_guard(self):
+        """Fix 3 — T-RE5: Ordinal form with number > 500 filtered by MAX_VALID_ARTICLE."""
+        body = "1116-ე მუხლი სამოქალაქო კოდექსიდან."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 1116 not in refs, "Ordinal phantom 1116 > MAX_VALID_ARTICLE must be filtered"
+

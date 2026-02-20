@@ -38,7 +38,7 @@ USER_AGENT = "ScoopTaxAgent/1.0 (+tax-agent-backend)"
 ARTICLE_NUMBER_RE = re.compile(r"მუხლი\s+(\d+)")
 KARI_RE = re.compile(r"^კარი\s+[IVXLCDM]+\.\s*(.+)")
 TAVI_RE = re.compile(r"^თავი\s+[IVXLCDM]+\.\s*(.+)")
-BODY_CROSS_REF_RE = re.compile(r"მუხლი\s+(\d+)")
+BODY_CROSS_REF_RE = re.compile(r"(?:ამ\s+კოდექსის\s+)?მუხლი\s+(\d+)")
 # Ordinal form: "238-ე მუხლი", "54-ე მუხლით", "71-ე მუხლის"
 BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]?\u10d4?\s*\u10db\u10e3\u10ee\u10da")
 REPEALED_KEYWORDS = ("ძალადაკარგულია", "ამოღებულია")

@@ -101,7 +101,7 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("MAX_GRAPH_REFS", "5"))
     )
     max_context_chars: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_CONTEXT_CHARS", "10000"))
+        default_factory=lambda: int(os.getenv("MAX_CONTEXT_CHARS", "20000"))
     )
 
     # ── Follow-Up Suggestions (Phase 1: Quick Replies) ──

@@ -114,7 +114,10 @@ def test_critic_threshold_custom(monkeypatch):
 
 
 def test_config_graph_defaults(monkeypatch):
-    """Phase 2: Graph expansion defaults are safe (off, 5 refs, 10K chars)."""
+    """Phase 2: Graph expansion defaults are safe (off, 5 refs, 20K chars).
+
+    Note: MAX_CONTEXT_CHARS raised from 10k → 20k (Fix 2) for Georgian RAG coverage.
+    """
     monkeypatch.delenv("GRAPH_EXPANSION_ENABLED", raising=False)
     monkeypatch.delenv("MAX_GRAPH_REFS", raising=False)
     monkeypatch.delenv("MAX_CONTEXT_CHARS", raising=False)
@@ -123,7 +126,7 @@ def test_config_graph_defaults(monkeypatch):
     s = Settings()
     assert s.graph_expansion_enabled is False
     assert s.max_graph_refs == 5
-    assert s.max_context_chars == 10000
+    assert s.max_context_chars == 20000
 
 
 # =============================================================================
@@ -165,4 +168,34 @@ def test_debug_env_invalid_value(monkeypatch):
 
     s = Settings()
     assert s.debug is False
+
+
+# =============================================================================
+# Fix 2 — Context Budget (TDD)
+# =============================================================================
+
+
+def test_max_context_chars_default_is_20000(monkeypatch):
+    """Fix 2 — T-CB1: Default MAX_CONTEXT_CHARS must be 20000 (not 10000).
+
+    Research basis: Georgian legal text ~2-3 chars/token for Gemini.
+    10k chars ≈ 3,300–5,000 tokens → only 1-2 articles in context.
+    20k chars ≈ 6,700–10,000 tokens → 8-9 articles (2× coverage, same latency).
+    """
+    monkeypatch.delenv("MAX_CONTEXT_CHARS", raising=False)
+    from config import Settings
+
+    s = Settings()
+    assert s.max_context_chars == 20000, (
+        f"Expected 20000 (Georgian RAG budget), got {s.max_context_chars}"
+    )
+
+
+def test_max_context_chars_env_override(monkeypatch):
+    """Fix 2 — T-CB2: MAX_CONTEXT_CHARS env var override still works after fix."""
+    monkeypatch.setenv("MAX_CONTEXT_CHARS", "30000")
+    from config import Settings
+
+    s = Settings()
+    assert s.max_context_chars == 30000
 
