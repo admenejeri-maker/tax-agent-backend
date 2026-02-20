@@ -162,8 +162,11 @@ def test_debug_env_override_case_insensitive(monkeypatch):
 
 
 def test_debug_env_invalid_value(monkeypatch):
-    """Non-'true' values (like 'yes', '1') default to False."""
-    monkeypatch.setenv("DEBUG", "yes")
+    """Pydantic v2 BaseSettings bool coercion: 'false'/'0'/'no'/'off' → False.
+    Note: 'yes'/'on'/'1' are valid truthy values in Pydantic v2 bool parsing
+    (unlike the old .lower() == 'true' pattern). Test uses explicit 'false'.
+    """
+    monkeypatch.setenv("DEBUG", "false")
     from config import Settings
 
     s = Settings()
@@ -198,4 +201,42 @@ def test_max_context_chars_env_override(monkeypatch):
 
     s = Settings()
     assert s.max_context_chars == 30000
+
+
+# =============================================================================
+# P1 — Pydantic V2 BaseSettings Migration (Sprint+1)
+# =============================================================================
+
+
+def test_settings_uses_basesettings():
+    """P1: Settings must be an instance of BaseSettings, not plain BaseModel."""
+    from pydantic_settings import BaseSettings
+    from config import settings
+
+    assert isinstance(settings, BaseSettings), (
+        "Settings must inherit from pydantic_settings.BaseSettings for proper "
+        "env var loading. Found: " + type(settings).__bases__[0].__name__
+    )
+
+
+def test_no_pydantic_v1_config_class():
+    """P1: Settings must NOT have a nested Config class (Pydantic v1 pattern)."""
+    from config import Settings
+
+    assert not hasattr(Settings, "Config"), (
+        "Settings still has a nested 'class Config' — Pydantic v1 pattern "
+        "must be removed in favour of model_config = SettingsConfigDict(...)."
+    )
+
+
+def test_basesettings_reads_env_var(monkeypatch):
+    """P1: BaseSettings must read an env var override without os.getenv()."""
+    monkeypatch.setenv("SEARCH_LIMIT", "99")
+    from config import Settings
+
+    s = Settings()
+    assert s.search_limit == 99, (
+        f"Expected search_limit=99 from env var, got {s.search_limit}. "
+        "BaseSettings env-var auto-reading is broken."
+    )
 

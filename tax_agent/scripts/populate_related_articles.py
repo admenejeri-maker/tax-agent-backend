@@ -25,8 +25,9 @@ sys.path.insert(0, _PROJECT_ROOT)
 
 from pymongo import MongoClient, UpdateOne  # noqa: E402
 
-BODY_CROSS_REF_RE = re.compile(r"მუხლი\s+(\d+)")
-BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]?\u10d4?\s*\u10db\u10e3\u10ee\u10da")
+BODY_CROSS_REF_RE = re.compile(r"(?:ამ\s+კოდექსის\s+)?მუხლი\s+(\d+)")
+# Ordinal form: "238-ე მუხლი", "54-ე მუხლით". Dash + ე mandatory (mirrors matsne_scraper.py fix).
+BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]\u10d4\s*\u10db\u10e3\u10ee\u10da")
 MAX_VALID_ARTICLE = 500  # Layer 3: filter phantoms from old body text
 
 
@@ -61,6 +62,15 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help="Print changes without modifying the database.",
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help=(
+            "REPLACE mode: overwrite related_articles with body-extracted refs only. "
+            "Use after a regex fix to remove stale/phantom refs from the DB. "
+            "Default (without --replace) is MERGE mode: only adds, never removes."
+        ),
     )
     args = parser.parse_args()
 
@@ -101,8 +111,12 @@ def main() -> None:
         existing_refs = article.get("related_articles", [])
         body_refs = extract_refs_from_body(body, article_number)
 
-        # Merge existing + body-text refs
-        merged = sorted(set(existing_refs + body_refs))
+        if args.replace:
+            # REPLACE mode: use body-extracted refs only (drops phantoms from old regex)
+            merged = body_refs
+        else:
+            # MERGE mode (default): additive-only, never removes existing refs
+            merged = sorted(set(existing_refs + body_refs))
 
         if merged == existing_refs:
             stats["unchanged"] += 1

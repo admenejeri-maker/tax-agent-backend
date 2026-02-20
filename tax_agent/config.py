@@ -1,178 +1,118 @@
 """
 Configuration for Georgian Tax AI Agent
 Adapted from Scoop AI backend config.py — "Copy-Adapt" strategy
-"""
-import os
-from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 
+Pydantic v2 — uses BaseSettings from pydantic-settings for proper
+env var loading without manual os.getenv() lambdas.
+"""
+from dotenv import load_dotenv
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# load_dotenv() kept for backward compat (ensures .env is loaded into os.environ
+# before any other module imports; BaseSettings will also read it via env_file).
 load_dotenv()
 
 
-def _safe_float(env_var: str, default: float) -> float:
-    """Parse float env var with fallback — never crash at import time."""
-    try:
-        return float(os.getenv(env_var, str(default)))
-    except (ValueError, TypeError):
-        return default
+class Settings(BaseSettings):
+    """Tax Agent application settings with production defaults.
 
+    BaseSettings automatically reads env vars by field name (case-insensitive).
+    Example: field `gemini_api_key` reads from env var `GEMINI_API_KEY`.
+    """
 
-class Settings(BaseModel):
-    """Tax Agent application settings with production defaults"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
 
     # =========================================================================
     # MongoDB
     # =========================================================================
-    mongodb_uri: str = Field(default_factory=lambda: os.getenv("MONGODB_URI", ""))
-    database_name: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_NAME", "georgian_tax_db")
-    )
+    mongodb_uri: str = Field(default="")
+    database_name: str = Field(default="georgian_tax_db")
 
     # =========================================================================
     # Google AI
     # =========================================================================
-    gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    embedding_model: str = Field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
-    )
+    gemini_api_key: str = Field(default="")
+
+    embedding_model: str = Field(default="gemini-embedding-001")
 
     # =========================================================================
     # LLM Generation (RAG Pipeline)
     # =========================================================================
     generation_model: str = Field(
-        default_factory=lambda: os.getenv("GEMINI_GENERATION_MODEL", "gemini-3-flash-preview")
+        default="gemini-3-flash-preview",
+        alias="gemini_generation_model",
+        validation_alias="GEMINI_GENERATION_MODEL",
     )
-    temperature: float = Field(
-        default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.2"))
-    )
-    max_history_turns: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_HISTORY_TURNS", "5"))
-    )
-    max_output_tokens: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_OUTPUT_TOKENS", "8192"))
-    )
-    query_rewrite_model: str = Field(
-        default_factory=lambda: os.getenv("QUERY_REWRITE_MODEL", "gemini-3-flash-preview")
-    )
-    query_rewrite_timeout: float = Field(
-        default_factory=lambda: float(os.getenv("QUERY_REWRITE_TIMEOUT", "3.0"))
-    )
+
+    temperature: float = Field(default=0.2)
+    max_history_turns: int = Field(default=5)
+    max_output_tokens: int = Field(default=8192)
+    query_rewrite_model: str = Field(default="gemini-3-flash-preview")
+    query_rewrite_timeout: float = Field(default=3.0)
 
     # =========================================================================
     # Tax Agent Settings
     # =========================================================================
-    similarity_threshold: float = Field(
-        default_factory=lambda: float(os.getenv("SIMILARITY_THRESHOLD", "0.5"))
-    )
-    matsne_request_delay: float = Field(
-        default_factory=lambda: float(os.getenv("MATSNE_REQUEST_DELAY", "2.0"))
-    )
-    search_limit: int = Field(
-        default_factory=lambda: int(os.getenv("SEARCH_LIMIT", "5"))
-    )
-    keyword_search_enabled: bool = Field(
-        default_factory=lambda: os.getenv("KEYWORD_SEARCH_ENABLED", "true").lower() == "true"
-    )
+    similarity_threshold: float = Field(default=0.5)
+    matsne_request_delay: float = Field(default=2.0)
+    search_limit: int = Field(default=5)
+    keyword_search_enabled: bool = Field(default=True)
 
     # =========================================================================
     # Feature Flags (Orchestrator) — all default to False for safe rollout
     # =========================================================================
-    router_enabled: bool = Field(
-        default_factory=lambda: os.getenv("ROUTER_ENABLED", "false").lower() == "true"
-    )
-    logic_rules_enabled: bool = Field(
-        default_factory=lambda: os.getenv("LOGIC_RULES_ENABLED", "false").lower() == "true"
-    )
-    critic_enabled: bool = Field(
-        default_factory=lambda: os.getenv("CRITIC_ENABLED", "false").lower() == "true"
-    )
-    critic_confidence_threshold: float = Field(
-        default_factory=lambda: _safe_float("CRITIC_CONFIDENCE_THRESHOLD", 0.7)
-    )
-    critic_regeneration_enabled: bool = Field(
-        default_factory=lambda: os.getenv("CRITIC_REGENERATION_ENABLED", "false").lower() == "true"
-    )
+    router_enabled: bool = Field(default=False)
+    logic_rules_enabled: bool = Field(default=False)
+    critic_enabled: bool = Field(default=False)
+    critic_confidence_threshold: float = Field(default=0.7)
+    critic_regeneration_enabled: bool = Field(default=False)
 
     # ── Graph Expansion (Phase 2 MVP) ──
-    graph_expansion_enabled: bool = Field(
-        default_factory=lambda: os.getenv("GRAPH_EXPANSION_ENABLED", "false").lower() == "true"
-    )
-    max_graph_refs: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_GRAPH_REFS", "5"))
-    )
-    max_context_chars: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_CONTEXT_CHARS", "20000"))
-    )
+    graph_expansion_enabled: bool = Field(default=False)
+    max_graph_refs: int = Field(default=5)
+    max_context_chars: int = Field(default=20000)
 
     # ── Follow-Up Suggestions (Phase 1: Quick Replies) ──
-    follow_up_enabled: bool = Field(
-        default_factory=lambda: os.getenv("FOLLOW_UP_ENABLED", "true").lower() == "true"
-    )
-    follow_up_model: str = Field(
-        default_factory=lambda: os.getenv("FOLLOW_UP_MODEL", "gemini-2.0-flash")
-    )
-    follow_up_max_suggestions: int = Field(
-        default_factory=lambda: int(os.getenv("FOLLOW_UP_MAX_SUGGESTIONS", "4"))
-    )
-    follow_up_timeout: float = Field(
-        default_factory=lambda: float(os.getenv("FOLLOW_UP_TIMEOUT", "5.0"))
-    )
+    follow_up_enabled: bool = Field(default=True)
+    follow_up_model: str = Field(default="gemini-2.0-flash")
+    follow_up_max_suggestions: int = Field(default=4)
+    follow_up_timeout: float = Field(default=5.0)
 
     # =========================================================================
     # Safety & Truncation Defense
     # =========================================================================
-    safety_retry_enabled: bool = Field(
-        default_factory=lambda: os.getenv("SAFETY_RETRY_ENABLED", "true").lower() == "true"
-    )
-    safety_fallback_model: str = Field(
-        default_factory=lambda: os.getenv("SAFETY_FALLBACK_MODEL", "gemini-2.5-flash")
-    )
+    safety_retry_enabled: bool = Field(default=True)
+    safety_fallback_model: str = Field(default="gemini-2.5-flash")
 
     # =========================================================================
     # Citation / Grounded UI (Task 7)
     # =========================================================================
-    citation_enabled: bool = Field(
-        default_factory=lambda: os.getenv("CITATION_ENABLED", "true").lower() == "true"
-    )
+    citation_enabled: bool = Field(default=True)
     matsne_base_url: str = Field(
-        default_factory=lambda: os.getenv(
-            "MATSNE_BASE_URL",
-            "https://matsne.gov.ge/ka/document/view/1043717/most-current-version",
-        )
+        default="https://matsne.gov.ge/ka/document/view/1043717/most-current-version"
     )
 
     # =========================================================================
     # Authentication
     # =========================================================================
-    api_key_secret: str = Field(
-        default_factory=lambda: os.getenv("API_KEY_SECRET", "")
-    )
-    require_api_key: bool = Field(
-        default_factory=lambda: os.getenv("REQUIRE_API_KEY", "false").lower() == "true"
-    )
-    api_key_max_per_ip: int = Field(
-        default_factory=lambda: int(os.getenv("API_KEY_MAX_PER_IP", "10"))
-    )
+    api_key_secret: str = Field(default="")
+    require_api_key: bool = Field(default=False)
+    api_key_max_per_ip: int = Field(default=10)
 
     # =========================================================================
     # Server
     # =========================================================================
-    host: str = "0.0.0.0"
-    port: int = Field(
-        default_factory=lambda: int(os.getenv("PORT", "8000"))
-    )
-    debug: bool = Field(
-        default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true"
-    )
-    rate_limit: int = Field(
-        default_factory=lambda: int(os.getenv("RATE_LIMIT", "30"))
-    )
-    allowed_origins: str = Field(
-        default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "http://localhost:3010")
-    )
-
-    class Config:
-        env_file = ".env"
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    debug: bool = Field(default=False)
+    rate_limit: int = Field(default=30)
+    allowed_origins: str = Field(default="http://localhost:3010")
 
 
 settings = Settings()

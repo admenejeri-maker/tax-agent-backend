@@ -719,8 +719,117 @@ class TestPrimaArticleDefense:
         assert MAX_VALID_ARTICLE == 500
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# Fix 3 — BODY_CROSS_REF_RE Tightening (TDD)
+# P2 — Ordinal Regex Tightening (Stress Tests)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestOrdinalRegexFix:
+    """P2: BODY_CROSS_REF_ORDINAL_RE — dash + ე are now mandatory.
+
+    These tests verify:
+      1. All real ordinal forms still match (no false negatives).
+      2. Base form 'N მუხლი' (no dash, no ე) does NOT match ordinal regex.
+      3. Boundary and em-dash edge cases.
+    """
+
+    # ── T-ORD1: Standard dash-ე form ─────────────────────────────────────────
+
+    def test_ordinal_standard_dash_e(self):
+        """T-ORD1: '238-ე მუხლი' — standard form matches."""
+        body = "238-ე მუხლი გამოიყენება ამ შემთხვევებში."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 238 in refs, "Standard ordinal '238-ე მუხლი' must be captured"
+
+    # ── T-ORD2: No-dash bare-ე form ──────────────────────────────────────────
+
+    def test_ordinal_no_dash_bare_e(self):
+        """T-ORD2: '81ე მუხლი' (no dash) — must NOT match after ე required.
+
+        IMPORTANT: After requiring dash, '81ე მუხლი' (no separator) is
+        intentionally excluded. If real corpus has this form, reconsider.
+        This test DOCUMENTS that decision. BODY_CROSS_REF_RE still captures
+        'მუხლი 81' base form text in the same sentence.
+        """
+        body = "81ე მუხლი გამოიყენება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        # Ordinal regex (dash mandatory) won't match; BODY_CROSS_REF_RE also
+        # won't match because the form is "81ე მუხლი" not "მუხლი 81".
+        # This is ACCEPTABLE: this construct is non-standard in Georgian law.
+        assert 81 not in refs, (
+            "Dashless '81ე მუხლი' excluded intentionally — "
+            "real corpus uses dash form '81-ე მუხლი'"
+        )
+
+    # ── T-ORD3: Grammatical suffix variants ──────────────────────────────────
+
+    def test_ordinal_suffix_mit(self):
+        """T-ORD3a: '54-ე მუხლით' (instrumental suffix) matches."""
+        body = "54-ე მუხლით გათვალისწინებული ვალდებულება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 54 in refs, "Ordinal with -ით suffix must be captured"
+
+    def test_ordinal_suffix_is(self):
+        """T-ORD3b: '71-ე მუხლის' (genitive suffix) matches."""
+        body = "71-ე მუხლის დებულებები გამოიყენება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 71 in refs, "Ordinal with -ის suffix must be captured"
+
+    def test_ordinal_suffix_idan(self):
+        """T-ORD3c: '166-ე მუხლიდან' (ablative suffix) matches."""
+        body = "166-ე მუხლიდან გამომდინარე ვალდებულება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 166 in refs, "Ordinal with -იდან suffix must be captured"
+
+    # ── T-ORD4: KEY REGRESSION — base form must NOT match ordinal regex ──────
+
+    def test_ordinal_regex_does_not_capture_base_form(self):
+        """T-ORD4: '81 მუხლი' (space, no ე, no dash) must NOT trigger ordinal regex.
+
+        This is the core fix: previously ე? and [-]? both optional meant
+        '81 მუხლი' (base form) would match the ordinal regex.
+        """
+        # Direct regex test — not via extract_body_cross_references
+        # since BODY_CROSS_REF_RE would correctly capture "მუხლი 81" text
+        import re
+        bare_ordinal = re.compile(BODY_CROSS_REF_ORDINAL_RE.pattern)
+        no_match_text = "81 მუხლი"  # base form: no dash, no ე
+        assert bare_ordinal.search(no_match_text) is None, (
+            "Base form '81 მუხლი' (no dash, no ე) MUST NOT match ordinal regex"
+        )
+
+    # ── T-ORD5: Boundary at MAX_VALID_ARTICLE ─────────────────────────────────
+
+    def test_ordinal_boundary_500(self):
+        """T-ORD5a: '500-ე მუხლი' — at boundary, must be captured."""
+        body = "500-ე მუხლი ვრცელდება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 500 in refs, "Article 500 at MAX_VALID_ARTICLE boundary must be captured"
+
+    def test_ordinal_over_boundary_filtered(self):
+        """T-ORD5b: '501-ე მუხლი' — over boundary, must be filtered."""
+        body = "501-ე მუხლი სამოქალაქო კოდექსიდან."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 501 not in refs, "Article 501 > MAX_VALID_ARTICLE must be filtered"
+
+    # ── T-ORD6: Em-dash Unicode variant ──────────────────────────────────────
+
+    def test_ordinal_em_dash_variant(self):
+        """T-ORD6: '54\u2013ე მუხლი' (em-dash \\u2013) — must match."""
+        body = "54\u2013ე მუხლი გამოიყენება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 54 in refs, "Em-dash variant '54\u2013ე მუხლი' must be captured"
+
+    # ── T-ORD7: Combined base + ordinal in same body text ────────────────────
+
+    def test_combined_base_and_ordinal_forms(self):
+        """T-ORD7: Both forms in one sentence — correctly captures both."""
+        body = "ამ კოდექსის მუხლი 81 და 54-ე მუხლი ერთობლივად გამოიყენება."
+        refs = extract_body_cross_references(body, self_article=-1)
+        assert 81 in refs, "Base form 'მუხლი 81' must be captured by BODY_CROSS_REF_RE"
+        assert 54 in refs, "Ordinal '54-ე მუხლი' must be captured by ORDINAL_RE"
+        assert refs == sorted(refs), "Result must be sorted"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 

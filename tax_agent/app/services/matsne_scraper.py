@@ -40,7 +40,8 @@ KARI_RE = re.compile(r"^კარი\s+[IVXLCDM]+\.\s*(.+)")
 TAVI_RE = re.compile(r"^თავი\s+[IVXLCDM]+\.\s*(.+)")
 BODY_CROSS_REF_RE = re.compile(r"(?:ამ\s+კოდექსის\s+)?მუხლი\s+(\d+)")
 # Ordinal form: "238-ე მუხლი", "54-ე მუხლით", "71-ე მუხლის"
-BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]?\u10d4?\s*\u10db\u10e3\u10ee\u10da")
+# Dash + ე are now MANDATORY — prevents false positives from bare "N მუხლი" base form.
+BODY_CROSS_REF_ORDINAL_RE = re.compile(r"(\d+)[-\u2013]\u10d4\s*\u10db\u10e3\u10ee\u10da")
 REPEALED_KEYWORDS = ("ძალადაკარგულია", "ამოღებულია")
 EXCEPTION_KEYWORDS = ("გარდა", "გამონაკლისი", "არ ვრცელდება")
 MAX_VALID_ARTICLE = 500  # Pydantic TaxArticle: article_number = Field(ge=1, le=500)
